@@ -19,6 +19,7 @@ type AppShellProps = {
   { label: "Reports", href: "/reports" },
   { label: "Settings", href: "/settings" },
   { label: "Account", href: "/account" },
+  { label: "Billing", href: "/billing" },
   { label: "Help", href: "/help" },
 ];
 

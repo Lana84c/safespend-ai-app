@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import AppShell from "@/components/AppShell";
+import BillingGate from "@/components/BillingGate";
 
 type Bill = {
   id: string;
@@ -428,410 +429,414 @@ export default function BillsPage() {
       title="Track money that is already spoken for."
       subtitle="Add bills, subscriptions, debt minimums, autopay items, and due dates so SafeSpend can protect that money before you spend it."
     >
-      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          label="Unpaid Bills"
-          value={money(billSummary.unpaidTotal)}
-          helper={`${billSummary.unpaidCount} unpaid obligations`}
-          danger={billSummary.unpaidTotal > 0}
-        />
+      <BillingGate requiredPlan="plus" featureName="Bills & Obligations">
+        <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard
+            label="Unpaid Bills"
+            value={money(billSummary.unpaidTotal)}
+            helper={`${billSummary.unpaidCount} unpaid obligations`}
+            danger={billSummary.unpaidTotal > 0}
+          />
 
-        <SummaryCard
-          label="Due Soon"
-          value={money(billSummary.dueSoonTotal)}
-          helper={`${billSummary.dueSoonCount} due within 7 days`}
-          warning={billSummary.dueSoonCount > 0}
-        />
+          <SummaryCard
+            label="Due Soon"
+            value={money(billSummary.dueSoonTotal)}
+            helper={`${billSummary.dueSoonCount} due within 7 days`}
+            warning={billSummary.dueSoonCount > 0}
+          />
 
-        <SummaryCard
-          label="Overdue"
-          value={String(billSummary.overdueCount)}
-          helper="Needs attention"
-          danger={billSummary.overdueCount > 0}
-        />
+          <SummaryCard
+            label="Overdue"
+            value={String(billSummary.overdueCount)}
+            helper="Needs attention"
+            danger={billSummary.overdueCount > 0}
+          />
 
-        <SummaryCard
-          label="Autopay Scheduled"
-          value={money(billSummary.autopayTotal)}
-          helper="Unpaid autopay bills"
-        />
-      </section>
-
-      {error && (
-        <section className="mb-6 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-600">
-          {error}
+          <SummaryCard
+            label="Autopay Scheduled"
+            value={money(billSummary.autopayTotal)}
+            helper="Unpaid autopay bills"
+          />
         </section>
-      )}
 
-      {status && (
-        <section className="mb-6 rounded-2xl bg-green-50 p-4 text-sm font-bold text-green-700">
-          {status}
-        </section>
-      )}
+        {error && (
+          <section className="mb-6 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-600">
+            {error}
+          </section>
+        )}
 
-      <section className="grid gap-6 xl:grid-cols-[.85fr_1.15fr]">
-        <form
-          onSubmit={handleAddBill}
-          className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl"
-        >
-          <h3 className="mb-5 text-2xl font-black text-[#061b3d]">
-            Add Bill
-          </h3>
+        {status && (
+          <section className="mb-6 rounded-2xl bg-green-50 p-4 text-sm font-bold text-green-700">
+            {status}
+          </section>
+        )}
 
-          <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-            Bill Name
-          </label>
-          <input
-            required
-            value={billName}
-            onChange={(event) => setBillName(event.target.value)}
-            className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-            placeholder="Power bill, Rent, Phone, Netflix..."
-          />
-
-          <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-            Category
-          </label>
-          <select
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-            className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+        <section className="grid gap-6 xl:grid-cols-[.85fr_1.15fr]">
+          <form
+            onSubmit={handleAddBill}
+            className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl"
           >
-            {categories.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
+            <h3 className="mb-5 text-2xl font-black text-[#061b3d]">
+              Add Bill
+            </h3>
 
-          <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-            Amount
-          </label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            required
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-            placeholder="180.00"
-          />
-
-          <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-            Due Date
-          </label>
-          <input
-            type="date"
-            required
-            value={dueDate}
-            onChange={(event) => setDueDate(event.target.value)}
-            className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-          />
-
-          <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-            Frequency
-          </label>
-          <select
-            value={frequency}
-            onChange={(event) =>
-              setFrequency(event.target.value as Bill["frequency"])
-            }
-            className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-          >
-            {frequencies.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-
-          <div className="mb-4 grid gap-3 md:grid-cols-2">
-            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-[#061b3d]">
-              <input
-                type="checkbox"
-                checked={isAutopay}
-                onChange={(event) => setIsAutopay(event.target.checked)}
-                className="h-4 w-4"
-              />
-              Autopay
+            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
+              Bill Name
             </label>
+            <input
+              required
+              value={billName}
+              onChange={(event) => setBillName(event.target.value)}
+              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+              placeholder="Power bill, Rent, Phone, Netflix..."
+            />
 
-            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-[#061b3d]">
-              <input
-                type="checkbox"
-                checked={isPaid}
-                onChange={(event) => setIsPaid(event.target.checked)}
-                className="h-4 w-4"
-              />
-              Already Paid
+            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
+              Category
             </label>
-          </div>
-
-          <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-            Notes
-          </label>
-          <textarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            className="mb-5 min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-            placeholder="Optional notes about this bill..."
-          />
-
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-6 py-3 font-black text-white shadow-lg disabled:opacity-60"
-          >
-            {saving ? "Saving..." : "Add Bill"}
-          </button>
-
-          <div className="mt-5 rounded-3xl border border-slate-100 bg-slate-50 p-5">
-            <p className="text-xs font-black uppercase tracking-widest text-slate-500">
-              Tip
-            </p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Add rent, utilities, debt minimums, subscriptions, and autopay
-              items. These help SafeSpend calculate protected safe-to-spend.
-            </p>
-          </div>
-        </form>
-
-        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h3 className="text-2xl font-black text-[#061b3d]">
-                Upcoming Bills
-              </h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Sorts unpaid bills first by due date.
-              </p>
-            </div>
-
-            <a
-              href="/dashboard"
-              className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-[#061b3d]"
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
             >
-              View Dashboard
-            </a>
-          </div>
+              {categories.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
 
-          {bills.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-              <h4 className="text-xl font-black text-[#061b3d]">
-                No bills added yet
-              </h4>
-              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-                Add your rent, utilities, subscriptions, debt payments, and
-                other upcoming obligations so SafeSpend can protect that money
-                before you spend it.
+            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
+              Amount
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+              placeholder="180.00"
+            />
+
+            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
+              Due Date
+            </label>
+            <input
+              type="date"
+              required
+              value={dueDate}
+              onChange={(event) => setDueDate(event.target.value)}
+              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+            />
+
+            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
+              Frequency
+            </label>
+            <select
+              value={frequency}
+              onChange={(event) =>
+                setFrequency(event.target.value as Bill["frequency"])
+              }
+              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+            >
+              {frequencies.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+
+            <div className="mb-4 grid gap-3 md:grid-cols-2">
+              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-[#061b3d]">
+                <input
+                  type="checkbox"
+                  checked={isAutopay}
+                  onChange={(event) => setIsAutopay(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Autopay
+              </label>
+
+              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-[#061b3d]">
+                <input
+                  type="checkbox"
+                  checked={isPaid}
+                  onChange={(event) => setIsPaid(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Already Paid
+              </label>
+            </div>
+
+            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
+              Notes
+            </label>
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              className="mb-5 min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+              placeholder="Optional notes about this bill..."
+            />
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-6 py-3 font-black text-white shadow-lg disabled:opacity-60"
+            >
+              {saving ? "Saving..." : "Add Bill"}
+            </button>
+
+            <div className="mt-5 rounded-3xl border border-slate-100 bg-slate-50 p-5">
+              <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+                Tip
+              </p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Add rent, utilities, debt minimums, subscriptions, and autopay
+                items. These help SafeSpend calculate protected safe-to-spend.
               </p>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {bills.map((bill) => {
-                const status = getDueStatus(bill);
+          </form>
 
-                return (
-                  <div
-                    key={bill.id}
-                    className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
-                  >
-                    {editingId === bill.id ? (
-                      <div className="space-y-3">
-                        <input
-                          value={editBillName}
-                          onChange={(event) =>
-                            setEditBillName(event.target.value)
-                          }
-                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-                          placeholder="Bill Name"
-                        />
+          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+            <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-2xl font-black text-[#061b3d]">
+                  Upcoming Bills
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Sorts unpaid bills first by due date.
+                </p>
+              </div>
 
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <select
-                            value={editCategory}
-                            onChange={(event) =>
-                              setEditCategory(event.target.value)
-                            }
-                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-                          >
-                            {categories.map((item) => (
-                              <option key={item} value={item}>
-                                {item}
-                              </option>
-                            ))}
-                          </select>
+              <a
+                href="/dashboard"
+                className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-[#061b3d]"
+              >
+                View Dashboard
+              </a>
+            </div>
 
+            {bills.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                <h4 className="text-xl font-black text-[#061b3d]">
+                  No bills added yet
+                </h4>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+                  Add your rent, utilities, subscriptions, debt payments, and
+                  other upcoming obligations so SafeSpend can protect that money
+                  before you spend it.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {bills.map((bill) => {
+                  const dueStatus = getDueStatus(bill);
+
+                  return (
+                    <div
+                      key={bill.id}
+                      className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                    >
+                      {editingId === bill.id ? (
+                        <div className="space-y-3">
                           <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={editAmount}
+                            value={editBillName}
                             onChange={(event) =>
-                              setEditAmount(event.target.value)
+                              setEditBillName(event.target.value)
                             }
-                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-                            placeholder="Amount"
-                          />
-                        </div>
-
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <input
-                            type="date"
-                            value={editDueDate}
-                            onChange={(event) =>
-                              setEditDueDate(event.target.value)
-                            }
-                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                            placeholder="Bill Name"
                           />
 
-                          <select
-                            value={editFrequency}
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <select
+                              value={editCategory}
+                              onChange={(event) =>
+                                setEditCategory(event.target.value)
+                              }
+                              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                            >
+                              {categories.map((item) => (
+                                <option key={item} value={item}>
+                                  {item}
+                                </option>
+                              ))}
+                            </select>
+
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={editAmount}
+                              onChange={(event) =>
+                                setEditAmount(event.target.value)
+                              }
+                              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                              placeholder="Amount"
+                            />
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <input
+                              type="date"
+                              value={editDueDate}
+                              onChange={(event) =>
+                                setEditDueDate(event.target.value)
+                              }
+                              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                            />
+
+                            <select
+                              value={editFrequency}
+                              onChange={(event) =>
+                                setEditFrequency(
+                                  event.target.value as Bill["frequency"]
+                                )
+                              }
+                              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                            >
+                              {frequencies.map((item) => (
+                                <option key={item.value} value={item.value}>
+                                  {item.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-[#061b3d]">
+                              <input
+                                type="checkbox"
+                                checked={editIsAutopay}
+                                onChange={(event) =>
+                                  setEditIsAutopay(event.target.checked)
+                                }
+                                className="h-4 w-4"
+                              />
+                              Autopay
+                            </label>
+
+                            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-[#061b3d]">
+                              <input
+                                type="checkbox"
+                                checked={editIsPaid}
+                                onChange={(event) =>
+                                  setEditIsPaid(event.target.checked)
+                                }
+                                className="h-4 w-4"
+                              />
+                              Paid
+                            </label>
+                          </div>
+
+                          <textarea
+                            value={editNotes}
                             onChange={(event) =>
-                              setEditFrequency(
-                                event.target.value as Bill["frequency"]
-                              )
+                              setEditNotes(event.target.value)
                             }
-                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-                          >
-                            {frequencies.map((item) => (
-                              <option key={item.value} value={item.value}>
-                                {item.label}
-                              </option>
-                            ))}
-                          </select>
+                            className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                            placeholder="Notes"
+                          />
+
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateBill(bill.id)}
+                              disabled={saving}
+                              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-4 py-2 text-sm font-black text-white"
+                            >
+                              Save
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={cancelEditing}
+                              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-[#061b3d]"
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         </div>
+                      ) : (
+                        <div>
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-black text-[#061b3d]">
+                                  {bill.bill_name}
+                                </p>
 
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-[#061b3d]">
-                            <input
-                              type="checkbox"
-                              checked={editIsAutopay}
-                              onChange={(event) =>
-                                setEditIsAutopay(event.target.checked)
-                              }
-                              className="h-4 w-4"
-                            />
-                            Autopay
-                          </label>
+                                <span
+                                  className={`rounded-full px-3 py-1 text-xs font-black ${dueStatus.className}`}
+                                >
+                                  {dueStatus.label}
+                                </span>
 
-                          <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-[#061b3d]">
-                            <input
-                              type="checkbox"
-                              checked={editIsPaid}
-                              onChange={(event) =>
-                                setEditIsPaid(event.target.checked)
-                              }
-                              className="h-4 w-4"
-                            />
-                            Paid
-                          </label>
-                        </div>
+                                {bill.is_autopay && (
+                                  <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-700">
+                                    Autopay
+                                  </span>
+                                )}
+                              </div>
 
-                        <textarea
-                          value={editNotes}
-                          onChange={(event) => setEditNotes(event.target.value)}
-                          className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-                          placeholder="Notes"
-                        />
-
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateBill(bill.id)}
-                            disabled={saving}
-                            className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-4 py-2 text-sm font-black text-white"
-                          >
-                            Save
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={cancelEditing}
-                            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-[#061b3d]"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="font-black text-[#061b3d]">
-                                {bill.bill_name}
+                              <p className="mt-1 text-sm text-slate-500">
+                                {bill.category} · {formatDate(bill.due_date)} ·{" "}
+                                {bill.frequency.replace("_", " ")}
                               </p>
 
-                              <span
-                                className={`rounded-full px-3 py-1 text-xs font-black ${status.className}`}
-                              >
-                                {status.label}
-                              </span>
-
-                              {bill.is_autopay && (
-                                <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-700">
-                                  Autopay
-                                </span>
+                              {bill.notes && (
+                                <p className="mt-2 text-xs leading-5 text-slate-400">
+                                  {bill.notes}
+                                </p>
                               )}
                             </div>
 
-                            <p className="mt-1 text-sm text-slate-500">
-                              {bill.category} · {formatDate(bill.due_date)} ·{" "}
-                              {bill.frequency.replace("_", " ")}
+                            <p className="text-right text-lg font-black text-[#061b3d]">
+                              {money(Number(bill.amount))}
                             </p>
-
-                            {bill.notes && (
-                              <p className="mt-2 text-xs leading-5 text-slate-400">
-                                {bill.notes}
-                              </p>
-                            )}
                           </div>
 
-                          <p className="text-right text-lg font-black text-[#061b3d]">
-                            {money(Number(bill.amount))}
-                          </p>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePaid(bill)}
+                              className={`rounded-full px-3 py-1 text-xs font-black ${
+                                bill.is_paid
+                                  ? "bg-yellow-50 text-yellow-700"
+                                  : "bg-green-50 text-green-700"
+                              }`}
+                            >
+                              {bill.is_paid ? "Mark Unpaid" : "Mark Paid"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => startEditing(bill)}
+                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-[#061b3d]"
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBill(bill.id)}
+                              className="rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-black text-red-600"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
-
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleTogglePaid(bill)}
-                            className={`rounded-full px-3 py-1 text-xs font-black ${
-                              bill.is_paid
-                                ? "bg-yellow-50 text-yellow-700"
-                                : "bg-green-50 text-green-700"
-                            }`}
-                          >
-                            {bill.is_paid ? "Mark Unpaid" : "Mark Paid"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => startEditing(bill)}
-                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-[#061b3d]"
-                          >
-                            Edit
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteBill(bill.id)}
-                            className="rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-black text-red-600"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
         </section>
-      </section>
+      </BillingGate>
     </AppShell>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import AppShell from "@/components/AppShell";
+import BillingGate from "@/components/BillingGate";
 
 type Transaction = {
   id: string;
@@ -229,7 +230,9 @@ export default function ReportsPage() {
         category,
         spent,
         percent:
-          totals.spent > 0 ? Math.round((Number(spent) / totals.spent) * 100) : 0,
+          totals.spent > 0
+            ? Math.round((Number(spent) / totals.spent) * 100)
+            : 0,
       }))
       .sort((a, b) => b.spent - a.spent);
   }, [filteredTransactions, totals.spent]);
@@ -250,7 +253,9 @@ export default function ReportsPage() {
         merchant,
         spent,
         percent:
-          totals.spent > 0 ? Math.round((Number(spent) / totals.spent) * 100) : 0,
+          totals.spent > 0
+            ? Math.round((Number(spent) / totals.spent) * 100)
+            : 0,
       }))
       .sort((a, b) => b.spent - a.spent)
       .slice(0, 8);
@@ -340,9 +345,7 @@ export default function ReportsPage() {
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f4f8fb]">
-        <p className="text-lg font-bold text-[#061b3d]">
-          Loading reports...
-        </p>
+        <p className="text-lg font-bold text-[#061b3d]">Loading reports...</p>
       </main>
     );
   }
@@ -353,371 +356,373 @@ export default function ReportsPage() {
       title="See where your money is going."
       subtitle="Review income, spending, categories, budget pressure, bills due soon, and the patterns that affect your safe-to-spend number."
     >
-      <section className="mb-6 flex flex-wrap gap-3 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-lg">
-        <FilterButton
-          label="This Week"
-          active={filterRange === "week"}
-          onClick={() => setFilterRange("week")}
-        />
+      <BillingGate requiredPlan="plus" featureName="Reports & Spending Insights">
+        <section className="mb-6 flex flex-wrap gap-3 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-lg">
+          <FilterButton
+            label="This Week"
+            active={filterRange === "week"}
+            onClick={() => setFilterRange("week")}
+          />
 
-        <FilterButton
-          label="This Month"
-          active={filterRange === "month"}
-          onClick={() => setFilterRange("month")}
-        />
+          <FilterButton
+            label="This Month"
+            active={filterRange === "month"}
+            onClick={() => setFilterRange("month")}
+          />
 
-        <FilterButton
-          label="All Time"
-          active={filterRange === "all"}
-          onClick={() => setFilterRange("all")}
-        />
-      </section>
-
-      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          label="Income"
-          value={money(totals.income)}
-          helper="Money in"
-        />
-
-        <MetricCard
-          label="Spent"
-          value={money(totals.spent)}
-          helper="Money out"
-        />
-
-        <MetricCard
-          label="Protected Safe"
-          value={money(protectedSafeToSpend)}
-          helper="After bills due soon"
-          danger={protectedSafeToSpend <= 0}
-        />
-
-        <MetricCard
-          label="Risk Level"
-          value={totals.risk}
-          helper={`${totals.count} entries in view`}
-          danger={totals.risk === "Critical" || totals.risk === "High"}
-        />
-      </section>
-
-      <section className="mb-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-        <p className="mb-2 inline-flex rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-cyan-700">
-          Report Summary
-        </p>
-
-        <h3 className="text-2xl font-black text-[#061b3d]">
-          SafeSpend readout
-        </h3>
-
-        <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-600">
-          {reportSummary}
-        </p>
-      </section>
-
-      {error && (
-        <section className="mb-6 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-600">
-          {error}
+          <FilterButton
+            label="All Time"
+            active={filterRange === "all"}
+            onClick={() => setFilterRange("all")}
+          />
         </section>
-      )}
 
-      <section className="mb-6 grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
-        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
+        <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            label="Income"
+            value={money(totals.income)}
+            helper="Money in"
+          />
+
+          <MetricCard
+            label="Spent"
+            value={money(totals.spent)}
+            helper="Money out"
+          />
+
+          <MetricCard
+            label="Protected Safe"
+            value={money(protectedSafeToSpend)}
+            helper="After bills due soon"
+            danger={protectedSafeToSpend <= 0}
+          />
+
+          <MetricCard
+            label="Risk Level"
+            value={totals.risk}
+            helper={`${totals.count} entries in view`}
+            danger={totals.risk === "Critical" || totals.risk === "High"}
+          />
+        </section>
+
+        <section className="mb-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+          <p className="mb-2 inline-flex rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-cyan-700">
+            Report Summary
+          </p>
+
+          <h3 className="text-2xl font-black text-[#061b3d]">
+            SafeSpend readout
+          </h3>
+
+          <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-600">
+            {reportSummary}
+          </p>
+        </section>
+
+        {error && (
+          <section className="mb-6 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-600">
+            {error}
+          </section>
+        )}
+
+        <section className="mb-6 grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
+          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+            <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-2xl font-black text-[#061b3d]">
+                  Spending by Category
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Categories ranked by spending in this period.
+                </p>
+              </div>
+
+              <a
+                href="/budgets"
+                className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-[#061b3d]"
+              >
+                Adjust Budgets
+              </a>
+            </div>
+
+            {spendingByCategory.length === 0 ? (
+              <EmptyState
+                title="No spending categories yet"
+                description="Add expense transactions to see category trends."
+                href="/transactions"
+                action="Add Transactions"
+              />
+            ) : (
+              <div className="space-y-4">
+                {spendingByCategory.map((item) => (
+                  <ProgressRow
+                    key={item.category}
+                    label={item.category}
+                    value={money(item.spent)}
+                    percent={item.percent}
+                    danger={item.percent >= 50}
+                    helper={`${item.percent}% of total spending`}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+            <div className="mb-5">
               <h3 className="text-2xl font-black text-[#061b3d]">
-                Spending by Category
+                Top Merchants
               </h3>
               <p className="mt-1 text-sm text-slate-500">
-                Categories ranked by spending in this period.
+                Where your money went most often by total spend.
               </p>
             </div>
 
-            <a
-              href="/budgets"
-              className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-[#061b3d]"
-            >
-              Adjust Budgets
-            </a>
-          </div>
+            {topMerchants.length === 0 ? (
+              <EmptyState
+                title="No merchant data yet"
+                description="Add expenses with merchant names to see top spending places."
+                href="/transactions"
+                action="Add Transactions"
+              />
+            ) : (
+              <div className="space-y-3">
+                {topMerchants.map((item) => (
+                  <div
+                    key={item.merchant}
+                    className="flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                  >
+                    <div>
+                      <p className="font-black text-[#061b3d]">
+                        {item.merchant}
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        {item.percent}% of total spending
+                      </p>
+                    </div>
 
-          {spendingByCategory.length === 0 ? (
-            <EmptyState
-              title="No spending categories yet"
-              description="Add expense transactions to see category trends."
-              href="/transactions"
-              action="Add Transactions"
-            />
-          ) : (
-            <div className="space-y-4">
-              {spendingByCategory.map((item) => (
-                <ProgressRow
-                  key={item.category}
-                  label={item.category}
-                  value={money(item.spent)}
-                  percent={item.percent}
-                  danger={item.percent >= 50}
-                  helper={`${item.percent}% of total spending`}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-          <div className="mb-5">
-            <h3 className="text-2xl font-black text-[#061b3d]">
-              Top Merchants
-            </h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Where your money went most often by total spend.
-            </p>
-          </div>
-
-          {topMerchants.length === 0 ? (
-            <EmptyState
-              title="No merchant data yet"
-              description="Add expenses with merchant names to see top spending places."
-              href="/transactions"
-              action="Add Transactions"
-            />
-          ) : (
-            <div className="space-y-3">
-              {topMerchants.map((item) => (
-                <div
-                  key={item.merchant}
-                  className="flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4"
-                >
-                  <div>
                     <p className="font-black text-[#061b3d]">
-                      {item.merchant}
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      {item.percent}% of total spending
+                      {money(item.spent)}
                     </p>
                   </div>
-
-                  <p className="font-black text-[#061b3d]">
-                    {money(item.spent)}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      </section>
-
-      <section className="mb-6 grid gap-6 xl:grid-cols-2">
-        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h3 className="text-2xl font-black text-[#061b3d]">
-                Budget Pressure
-              </h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Spending compared to your weekly category limits.
-              </p>
-            </div>
-
-            <a
-              href="/budgets"
-              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
-            >
-              Manage Budgets
-            </a>
-          </div>
-
-          {budgetPressure.length === 0 ? (
-            <EmptyState
-              title="No budget limits yet"
-              description="Add budgets so SafeSpend can calculate category pressure."
-              href="/budgets"
-              action="Set Budgets"
-            />
-          ) : (
-            <div className="space-y-4">
-              {budgetPressure.map((item) => (
-                <ProgressRow
-                  key={item.category}
-                  label={item.category}
-                  value={`${money(item.spent)} of ${money(item.limit)}`}
-                  percent={Math.min(item.percentUsed, 100)}
-                  danger={item.status === "Over Budget"}
-                  warning={item.status === "Close"}
-                  helper={item.status}
-                />
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </section>
         </section>
 
-        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h3 className="text-2xl font-black text-[#061b3d]">
-                Bills & Obligations
-              </h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Upcoming and overdue bills affecting safe-to-spend.
-              </p>
+        <section className="mb-6 grid gap-6 xl:grid-cols-2">
+          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+            <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-2xl font-black text-[#061b3d]">
+                  Budget Pressure
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Spending compared to your weekly category limits.
+                </p>
+              </div>
+
+              <a
+                href="/budgets"
+                className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
+              >
+                Manage Budgets
+              </a>
             </div>
 
-            <a
-              href="/bills"
-              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
-            >
-              Manage Bills
-            </a>
-          </div>
+            {budgetPressure.length === 0 ? (
+              <EmptyState
+                title="No budget limits yet"
+                description="Add budgets so SafeSpend can calculate category pressure."
+                href="/budgets"
+                action="Set Budgets"
+              />
+            ) : (
+              <div className="space-y-4">
+                {budgetPressure.map((item) => (
+                  <ProgressRow
+                    key={item.category}
+                    label={item.category}
+                    value={`${money(item.spent)} of ${money(item.limit)}`}
+                    percent={Math.min(item.percentUsed, 100)}
+                    danger={item.status === "Over Budget"}
+                    warning={item.status === "Close"}
+                    helper={item.status}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
 
-          <div className="mb-5 grid gap-3 md:grid-cols-3">
-            <MiniStat
-              label="Due Soon"
-              value={money(upcomingBillsTotal)}
-              helper={`${upcomingBills.length} bills`}
-            />
-            <MiniStat
-              label="Overdue"
-              value={String(overdueBills.length)}
-              helper="unpaid"
-              danger={overdueBills.length > 0}
-            />
-            <MiniStat
-              label="Protected Safe"
-              value={money(protectedSafeToSpend)}
-              helper="after bills"
-              danger={protectedSafeToSpend <= 0}
-            />
-          </div>
+          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+            <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-2xl font-black text-[#061b3d]">
+                  Bills & Obligations
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Upcoming and overdue bills affecting safe-to-spend.
+                </p>
+              </div>
 
-          {upcomingBills.length === 0 && overdueBills.length === 0 ? (
-            <EmptyState
-              title="No bill pressure right now"
-              description="Add upcoming bills so SafeSpend can protect that money."
-              href="/bills"
-              action="Add Bills"
-            />
-          ) : (
-            <div className="space-y-3">
-              {[...overdueBills, ...upcomingBills].slice(0, 7).map((bill) => {
-                const days = daysUntil(bill.due_date);
-                const overdue = days < 0;
+              <a
+                href="/bills"
+                className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
+              >
+                Manage Bills
+              </a>
+            </div>
 
-                return (
-                  <div
-                    key={bill.id}
-                    className={`rounded-2xl border p-4 ${
-                      overdue
-                        ? "border-red-100 bg-red-50"
-                        : "border-slate-100 bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
+            <div className="mb-5 grid gap-3 md:grid-cols-3">
+              <MiniStat
+                label="Due Soon"
+                value={money(upcomingBillsTotal)}
+                helper={`${upcomingBills.length} bills`}
+              />
+              <MiniStat
+                label="Overdue"
+                value={String(overdueBills.length)}
+                helper="unpaid"
+                danger={overdueBills.length > 0}
+              />
+              <MiniStat
+                label="Protected Safe"
+                value={money(protectedSafeToSpend)}
+                helper="after bills"
+                danger={protectedSafeToSpend <= 0}
+              />
+            </div>
+
+            {upcomingBills.length === 0 && overdueBills.length === 0 ? (
+              <EmptyState
+                title="No bill pressure right now"
+                description="Add upcoming bills so SafeSpend can protect that money."
+                href="/bills"
+                action="Add Bills"
+              />
+            ) : (
+              <div className="space-y-3">
+                {[...overdueBills, ...upcomingBills].slice(0, 7).map((bill) => {
+                  const days = daysUntil(bill.due_date);
+                  const overdue = days < 0;
+
+                  return (
+                    <div
+                      key={bill.id}
+                      className={`rounded-2xl border p-4 ${
+                        overdue
+                          ? "border-red-100 bg-red-50"
+                          : "border-slate-100 bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p
+                            className={`font-black ${
+                              overdue ? "text-red-700" : "text-[#061b3d]"
+                            }`}
+                          >
+                            {bill.bill_name}
+                          </p>
+
+                          <p
+                            className={`text-sm ${
+                              overdue ? "text-red-600" : "text-slate-500"
+                            }`}
+                          >
+                            {overdue
+                              ? `Overdue by ${Math.abs(days)} days`
+                              : days === 0
+                                ? "Due today"
+                                : days === 1
+                                  ? "Due tomorrow"
+                                  : `Due in ${days} days`}{" "}
+                            · {formatDate(bill.due_date)}
+                            {bill.is_autopay ? " · Autopay" : ""}
+                          </p>
+                        </div>
+
                         <p
                           className={`font-black ${
                             overdue ? "text-red-700" : "text-[#061b3d]"
                           }`}
                         >
-                          {bill.bill_name}
-                        </p>
-
-                        <p
-                          className={`text-sm ${
-                            overdue ? "text-red-600" : "text-slate-500"
-                          }`}
-                        >
-                          {overdue
-                            ? `Overdue by ${Math.abs(days)} days`
-                            : days === 0
-                              ? "Due today"
-                              : days === 1
-                                ? "Due tomorrow"
-                                : `Due in ${days} days`}{" "}
-                          · {formatDate(bill.due_date)}
-                          {bill.is_autopay ? " · Autopay" : ""}
+                          {money(Number(bill.amount))}
                         </p>
                       </div>
-
-                      <p
-                        className={`font-black ${
-                          overdue ? "text-red-700" : "text-[#061b3d]"
-                        }`}
-                      >
-                        {money(Number(bill.amount))}
-                      </p>
                     </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </section>
+
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-2xl font-black text-[#061b3d]">
+                Recent Activity
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Latest transactions included in your selected report view.
+              </p>
+            </div>
+
+            <a
+              href="/transactions"
+              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
+            >
+              Open Transactions
+            </a>
+          </div>
+
+          {filteredTransactions.length === 0 ? (
+            <EmptyState
+              title="No activity yet"
+              description="Add transactions to start generating reports."
+              href="/transactions"
+              action="Add Transaction"
+            />
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {filteredTransactions.slice(0, 8).map((tx) => (
+                <div
+                  key={tx.id}
+                  className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-black text-[#061b3d]">
+                        {tx.merchant || tx.category}
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        {tx.type} · {tx.category} · {formatDate(tx.date)}
+                      </p>
+                      {tx.description && (
+                        <p className="mt-1 text-xs text-slate-400">
+                          {tx.description}
+                        </p>
+                      )}
+                    </div>
+
+                    <p
+                      className={`whitespace-nowrap font-black ${
+                        Number(tx.amount) < 0
+                          ? "text-red-500"
+                          : "text-green-600"
+                      }`}
+                    >
+                      {money(Number(tx.amount))}
+                    </p>
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           )}
         </section>
-      </section>
-
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h3 className="text-2xl font-black text-[#061b3d]">
-              Recent Activity
-            </h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Latest transactions included in your selected report view.
-            </p>
-          </div>
-
-          <a
-            href="/transactions"
-            className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
-          >
-            Open Transactions
-          </a>
-        </div>
-
-        {filteredTransactions.length === 0 ? (
-          <EmptyState
-            title="No activity yet"
-            description="Add transactions to start generating reports."
-            href="/transactions"
-            action="Add Transaction"
-          />
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2">
-            {filteredTransactions.slice(0, 8).map((tx) => (
-              <div
-                key={tx.id}
-                className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="font-black text-[#061b3d]">
-                      {tx.merchant || tx.category}
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      {tx.type} · {tx.category} · {formatDate(tx.date)}
-                    </p>
-                    {tx.description && (
-                      <p className="mt-1 text-xs text-slate-400">
-                        {tx.description}
-                      </p>
-                    )}
-                  </div>
-
-                  <p
-                    className={`whitespace-nowrap font-black ${
-                      Number(tx.amount) < 0
-                        ? "text-red-500"
-                        : "text-green-600"
-                    }`}
-                  >
-                    {money(Number(tx.amount))}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      </BillingGate>
     </AppShell>
   );
 }
@@ -774,11 +779,7 @@ function MiniStat({
   danger?: boolean;
 }) {
   return (
-    <div
-      className={`rounded-2xl p-4 ${
-        danger ? "bg-red-50" : "bg-slate-50"
-      }`}
-    >
+    <div className={`rounded-2xl p-4 ${danger ? "bg-red-50" : "bg-slate-50"}`}>
       <p
         className={`text-xs font-black uppercase tracking-widest ${
           danger ? "text-red-500" : "text-slate-500"
