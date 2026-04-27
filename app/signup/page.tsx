@@ -88,7 +88,7 @@ export default function SignUpPage() {
             value={fullName}
             onChange={(event) => setFullName(event.target.value)}
             className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-            placeholder="Marlena Carver"
+            placeholder="Full Name"
           />
 
           <label className="mb-2 block text-sm font-bold text-[#061b3d]">

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import AppShell from "@/components/AppShell";
 
 type Transaction = {
   id: string;
@@ -23,6 +24,19 @@ type Budget = {
   weekly_limit: number;
   monthly_limit: number;
   created_at: string;
+};
+
+type Bill = {
+  id: string;
+  user_id: string;
+  bill_name: string;
+  category: string;
+  amount: number;
+  due_date: string;
+  frequency: string;
+  is_autopay: boolean;
+  is_paid: boolean;
+  notes: string | null;
 };
 
 type UserSettings = {
@@ -65,22 +79,30 @@ type SafeSpendCoachResponse = {
   };
 };
 
-const categories = [
-  "Income",
-  "Groceries",
-  "Bills",
-  "Shopping",
-  "Transportation",
-  "Dining",
-  "Debt",
-  "Savings",
-  "Subscriptions",
-  "Personal",
-  "Other",
-];
-
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
+}
+
+function money(value: number) {
+  return Number(value || 0).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+}
+
+function formatDate(dateValue: string) {
+  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function daysUntil(dateValue: string) {
+  const today = new Date(`${getTodayDate()}T00:00:00`);
+  const due = new Date(`${dateValue}T00:00:00`);
+  const diff = due.getTime() - today.getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
 function formatIntentLabel(intent: SafeSpendIntent) {
@@ -98,23 +120,10 @@ export default function DashboardPage() {
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [bills, setBills] = useState<Bill[]>([]);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+
   const [filterRange, setFilterRange] = useState<FilterRange>("week");
-
-  const [transactionDate, setTransactionDate] = useState(getTodayDate());
-  const [type, setType] = useState<Transaction["type"]>("Expense");
-  const [category, setCategory] = useState("Groceries");
-  const [merchant, setMerchant] = useState("");
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDate, setEditDate] = useState("");
-  const [editType, setEditType] = useState<Transaction["type"]>("Expense");
-  const [editCategory, setEditCategory] = useState("Groceries");
-  const [editMerchant, setEditMerchant] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [editAmount, setEditAmount] = useState("");
 
   const [aiMessage, setAiMessage] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -122,7 +131,6 @@ export default function DashboardPage() {
     useState<SafeSpendCoachResponse | null>(null);
 
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -145,6 +153,7 @@ export default function DashboardPage() {
     await Promise.all([
       loadTransactions(user.id),
       loadBudgets(user.id),
+      loadBills(user.id),
       loadUserSettings(user.id),
     ]);
 
@@ -180,6 +189,22 @@ export default function DashboardPage() {
     }
 
     setBudgets((data || []) as Budget[]);
+  }
+
+  async function loadBills(currentUserId: string) {
+    const { data, error } = await supabase
+      .from("bills")
+      .select("*")
+      .eq("user_id", currentUserId)
+      .order("is_paid", { ascending: true })
+      .order("due_date", { ascending: true });
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setBills((data || []) as Bill[]);
   }
 
   async function loadUserSettings(currentUserId: string) {
@@ -288,6 +313,43 @@ export default function DashboardPage() {
       .sort((a, b) => b.percentUsed - a.percentUsed);
   }, [budgets, filteredTransactions]);
 
+  const upcomingBills = useMemo(() => {
+    return bills
+      .filter((bill) => !bill.is_paid)
+      .filter((bill) => {
+        const days = daysUntil(bill.due_date);
+        return days >= 0 && days <= 14;
+      })
+      .sort((a, b) => a.due_date.localeCompare(b.due_date));
+  }, [bills]);
+
+  const overdueBills = useMemo(() => {
+    return bills
+      .filter((bill) => !bill.is_paid)
+      .filter((bill) => daysUntil(bill.due_date) < 0)
+      .sort((a, b) => a.due_date.localeCompare(b.due_date));
+  }, [bills]);
+
+  const upcomingBillsTotal = useMemo(() => {
+    return upcomingBills.reduce(
+      (sum, bill) => sum + Number(bill.amount || 0),
+      0
+    );
+  }, [upcomingBills]);
+
+  const protectedSafeToSpend = totals.safeToSpend - upcomingBillsTotal;
+
+  const recentTransactions = filteredTransactions.slice(0, 6);
+
+  const dashboardRisk =
+    protectedSafeToSpend <= 0
+      ? "Critical"
+      : protectedSafeToSpend < 100
+        ? "High"
+        : protectedSafeToSpend < 250
+          ? "Medium"
+          : "Low";
+
   async function handleSafeSpendCoach(
     event: React.FormEvent<HTMLFormElement>
   ) {
@@ -311,11 +373,14 @@ export default function DashboardPage() {
         body: JSON.stringify({
           message: aiMessage,
           safeToSpend: totals.safeToSpend,
+          protectedSafeToSpend,
           totalIncome: totals.totalIncome,
           totalSpent: totals.totalSpent,
           filterRange,
           categoryPressure,
           userSettings,
+          upcomingBills,
+          upcomingBillsTotal,
         }),
       });
 
@@ -328,16 +393,6 @@ export default function DashboardPage() {
       }
 
       setAiResponse(data);
-
-      if (data.shouldAutofillTransaction && data.transaction) {
-        setTransactionDate(data.transaction.date || getTodayDate());
-        setType(data.transaction.type || "Expense");
-        setCategory(data.transaction.category || "Other");
-        setMerchant(data.transaction.merchant || "");
-        setDescription(data.transaction.description || "");
-        setAmount(String(data.transaction.amount || ""));
-      }
-
       setAiLoading(false);
     } catch {
       setError("SafeSpend AI could not connect. Please try again.");
@@ -345,325 +400,343 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleAddTransaction(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!userId) return;
-
-    setSaving(true);
-    setError("");
-
-    const numericAmount = Number(amount);
-
-    if (!numericAmount || numericAmount <= 0) {
-      setError("Please enter an amount greater than 0.");
-      setSaving(false);
-      return;
-    }
-
-    const finalAmount =
-      type === "Income" ? numericAmount : -Math.abs(numericAmount);
-
-    const { error } = await supabase.from("transactions").insert({
-      user_id: userId,
-      date: transactionDate,
-      type,
-      category,
-      merchant: merchant || null,
-      description: description || null,
-      amount: finalAmount,
-    });
-
-    if (error) {
-      setError(error.message);
-      setSaving(false);
-      return;
-    }
-
-    setTransactionDate(getTodayDate());
-    setType("Expense");
-    setCategory("Groceries");
-    setMerchant("");
-    setDescription("");
-    setAmount("");
-    setAiMessage("");
-    setAiResponse(null);
-
-    await loadTransactions(userId);
-    setSaving(false);
-  }
-
-  function startEditing(tx: Transaction) {
-    setEditingId(tx.id);
-    setEditDate(tx.date || getTodayDate());
-    setEditType(tx.type);
-    setEditCategory(tx.category);
-    setEditMerchant(tx.merchant || "");
-    setEditDescription(tx.description || "");
-    setEditAmount(String(Math.abs(Number(tx.amount))));
-    setError("");
-  }
-
-  function cancelEditing() {
-    setEditingId(null);
-    setEditDate("");
-    setEditMerchant("");
-    setEditDescription("");
-    setEditAmount("");
-    setError("");
-  }
-
-  async function handleUpdateTransaction(txId: string) {
-    if (!userId) return;
-
-    setSaving(true);
-    setError("");
-
-    const numericAmount = Number(editAmount);
-
-    if (!numericAmount || numericAmount <= 0) {
-      setError("Please enter an amount greater than 0.");
-      setSaving(false);
-      return;
-    }
-
-    const finalAmount =
-      editType === "Income" ? numericAmount : -Math.abs(numericAmount);
-
-    const { error } = await supabase
-      .from("transactions")
-      .update({
-        date: editDate,
-        type: editType,
-        category: editCategory,
-        merchant: editMerchant || null,
-        description: editDescription || null,
-        amount: finalAmount,
-      })
-      .eq("id", txId)
-      .eq("user_id", userId);
-
-    if (error) {
-      setError(error.message);
-      setSaving(false);
-      return;
-    }
-
-    cancelEditing();
-    await loadTransactions(userId);
-    setSaving(false);
-  }
-
-  async function handleDeleteTransaction(txId: string) {
-    if (!userId) return;
-
-    const confirmed = window.confirm(
-      "Delete this transaction? This cannot be undone."
-    );
-
-    if (!confirmed) return;
-
-    setError("");
-
-    const { error } = await supabase
-      .from("transactions")
-      .delete()
-      .eq("id", txId)
-      .eq("user_id", userId);
-
-    if (error) {
-      setError(error.message);
-      return;
-    }
-
-    await loadTransactions(userId);
-  }
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/login");
-  }
-
-  function money(value: number) {
-    return value.toLocaleString("en-US", {
-      style: "currency",
-      currency: "USD",
-    });
-  }
-
-  function formatDate(dateValue: string) {
-    return new Date(`${dateValue}T00:00:00`).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f4f8fb]">
         <p className="text-lg font-bold text-[#061b3d]">
-          Loading SafeSpend...
+          Loading dashboard...
         </p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#eefbff] via-white to-[#f7fbfd] px-6 py-8 text-[#102033]">
-      <section className="mx-auto max-w-6xl">
-        <header className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-4">
-            <img
-              src="/safespend-logo.png"
-              alt="SafeSpend AI logo"
-              className="h-14 w-14 rounded-2xl shadow-lg"
-            />
+    <AppShell
+      email={email}
+      title="Your spending control center."
+      subtitle="See what is safe to spend, what is already spoken for, and what SafeSpend recommends before you buy."
+    >
+      <section className="mb-6 flex flex-wrap gap-3 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-lg">
+        <FilterButton
+          label="This Week"
+          active={filterRange === "week"}
+          onClick={() => setFilterRange("week")}
+        />
 
+        <FilterButton
+          label="This Month"
+          active={filterRange === "month"}
+          onClick={() => setFilterRange("month")}
+        />
+
+        <FilterButton
+          label="All Time"
+          active={filterRange === "all"}
+          onClick={() => setFilterRange("all")}
+        />
+      </section>
+
+      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          label="Safe to Spend"
+          value={money(totals.safeToSpend)}
+          helper="Before upcoming bills"
+        />
+
+        <MetricCard
+          label="Protected Safe to Spend"
+          value={money(protectedSafeToSpend)}
+          helper="After bills due soon"
+          danger={protectedSafeToSpend <= 0}
+        />
+
+        <MetricCard
+          label="Upcoming Bills"
+          value={money(upcomingBillsTotal)}
+          helper={`${upcomingBills.length} due within 14 days`}
+        />
+
+        <MetricCard
+          label="Risk Level"
+          value={dashboardRisk}
+          helper="Based on protected safe-to-spend"
+          danger={dashboardRisk === "Critical" || dashboardRisk === "High"}
+        />
+      </section>
+
+      {(overdueBills.length > 0 || protectedSafeToSpend <= 0) && (
+        <section className="mb-6 rounded-[2rem] border border-red-100 bg-red-50 p-5 shadow-lg">
+          <h3 className="text-xl font-black text-red-700">
+            Spending Alert
+          </h3>
+
+          <p className="mt-2 text-sm leading-6 text-red-700">
+            {overdueBills.length > 0
+              ? `You have ${overdueBills.length} overdue bill${
+                  overdueBills.length === 1 ? "" : "s"
+                }. Handle those before making discretionary purchases.`
+              : "Your protected safe-to-spend is at or below zero after upcoming bills. Pause non-essential spending until more income is added or bills are covered."}
+          </p>
+        </section>
+      )}
+
+      <section className="mb-6 grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-2xl font-black text-[#061b3d]">
-                SafeSpend AI
-              </h1>
-              <p className="text-sm text-slate-500">{email}</p>
+              <h3 className="text-2xl font-black text-[#061b3d]">
+                SafeSpend AI Quick Check
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Ask before you spend, or log what happened from the dedicated
+                Transactions page.
+              </p>
             </div>
+
+            <a
+              href="/coach"
+              className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-center text-sm font-black text-[#061b3d]"
+            >
+              Open Full Coach
+            </a>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <a
-              href="/budgets"
-              className="rounded-full border border-slate-200 bg-white px-5 py-3 font-black text-[#061b3d] shadow-sm"
-            >
-              Budgets
-            </a>
-
+          {userSettings ? (
+            <p className="mb-4 inline-flex rounded-full bg-green-50 px-4 py-2 text-xs font-black text-green-700">
+              Personal settings active
+            </p>
+          ) : (
             <a
               href="/settings"
-              className="rounded-full border border-slate-200 bg-white px-5 py-3 font-black text-[#061b3d] shadow-sm"
+              className="mb-4 inline-flex rounded-full bg-yellow-50 px-4 py-2 text-xs font-black text-yellow-700"
             >
-              Settings
+              Add personal settings for better guidance →
             </a>
+          )}
+
+          <form
+            onSubmit={handleSafeSpendCoach}
+            className="grid gap-3 md:grid-cols-[1fr_auto]"
+          >
+            <input
+              value={aiMessage}
+              onChange={(event) => setAiMessage(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+              placeholder="Example: Can I spend 150 on clothes?"
+            />
 
             <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-full border border-slate-200 bg-white px-5 py-3 font-black text-[#061b3d] shadow-sm"
+              type="submit"
+              disabled={aiLoading || !aiMessage.trim()}
+              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-6 py-3 font-black text-white shadow-lg disabled:opacity-60"
             >
-              Log Out
+              {aiLoading ? "Thinking..." : "Ask SafeSpend"}
             </button>
-          </div>
-        </header>
+          </form>
 
-        <section className="mb-6 rounded-[2rem] bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-8 text-white shadow-2xl">
-          <div className="grid gap-6 md:grid-cols-[1.2fr_.8fr] md:items-center">
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[
+              "Can I spend 150 on clothes?",
+              "I overspent by 80 this week",
+              "Should I eat out tonight?",
+              "I have bills due soon. What should I avoid spending on?",
+            ].map((example) => (
+              <button
+                key={example}
+                type="button"
+                onClick={() => setAiMessage(example)}
+                className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-[#061b3d]"
+              >
+                {example}
+              </button>
+            ))}
+          </div>
+
+          {aiResponse && (
+            <div className="mt-5 rounded-3xl border border-slate-100 bg-slate-50 p-5">
+              <div className="mb-4 flex flex-wrap gap-2">
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+                  {formatIntentLabel(aiResponse.intent)}
+                </span>
+
+                <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-700">
+                  Risk: {aiResponse.coach.riskLevel}
+                </span>
+
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
+                  Impact: {aiResponse.coach.safeToSpendImpact}
+                </span>
+              </div>
+
+              <h4 className="text-xl font-black text-[#061b3d]">
+                SafeSpend Guidance
+              </h4>
+
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                {aiResponse.coach.summary}
+              </p>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className="rounded-2xl bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+                    Recommendation
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    {aiResponse.coach.recommendation}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-gradient-to-r from-[#eefbff] to-[#f4fff6] p-4">
+                  <p className="text-xs font-black uppercase tracking-widest text-[#061b3d]">
+                    Next Best Action
+                  </p>
+                  <p className="mt-1 text-sm font-bold leading-6 text-[#061b3d]">
+                    {aiResponse.coach.nextBestAction}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-600">
+              {error}
+            </p>
+          )}
+        </section>
+
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+          <div className="mb-5 flex items-center justify-between gap-3">
             <div>
-              <p className="mb-3 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-bold">
-                Your spending control center
-              </p>
-
-              <h2 className="text-5xl font-black leading-[0.95] tracking-[-0.05em] md:text-6xl">
-                Stop overspending before it happens.
-              </h2>
-
-              <p className="mt-5 max-w-2xl text-white/80">
-                Add income, expenses, weekly limits, and personal settings so
-                SafeSpend can guide your real spending decisions.
-              </p>
-            </div>
-
-            <div className="rounded-3xl border border-white/20 bg-white/15 p-6 backdrop-blur">
-              <p className="text-sm font-black uppercase tracking-widest text-white/70">
-                Safe to Spend
-              </p>
-
-              <p className="mt-3 text-5xl font-black">
-                {money(totals.safeToSpend)}
-              </p>
-
-              <p className="mt-4 inline-flex rounded-full bg-white/15 px-4 py-2 text-sm font-bold">
-                Risk Level: {totals.risk}
+              <h3 className="text-2xl font-black text-[#061b3d]">
+                Quick Actions
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Jump to the right workspace.
               </p>
             </div>
           </div>
+
+          <div className="grid gap-3">
+            <QuickLink
+              href="/transactions"
+              title="Add or edit transactions"
+              description="Income, expenses, transfers, debt, and savings."
+            />
+
+            <QuickLink
+              href="/bills"
+              title="Manage bills"
+              description="Track due dates, autopay, and upcoming obligations."
+            />
+
+            <QuickLink
+              href="/budgets"
+              title="Adjust budgets"
+              description="Set weekly and monthly category guardrails."
+            />
+
+            <QuickLink
+              href="/settings"
+              title="Personalize AI guidance"
+              description="Paycheck rhythm, spending style, and priorities."
+            />
+          </div>
+        </section>
+      </section>
+
+      <section className="mb-6 grid gap-6 xl:grid-cols-2">
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-2xl font-black text-[#061b3d]">
+                Bills Due Soon
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Money SafeSpend treats as already spoken for.
+              </p>
+            </div>
+
+            <a
+              href="/bills"
+              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-center text-sm font-black text-white shadow-lg"
+            >
+              Manage Bills
+            </a>
+          </div>
+
+          {upcomingBills.length === 0 ? (
+            <EmptyState
+              title="No bills due soon"
+              description="Add upcoming bills so SafeSpend can protect that money before you spend it."
+              href="/bills"
+              action="Add Bills"
+            />
+          ) : (
+            <div className="space-y-3">
+              {upcomingBills.slice(0, 5).map((bill) => {
+                const days = daysUntil(bill.due_date);
+
+                return (
+                  <div
+                    key={bill.id}
+                    className="flex flex-col gap-2 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div>
+                      <p className="font-black text-[#061b3d]">
+                        {bill.bill_name}
+                      </p>
+
+                      <p className="text-sm text-slate-500">
+                        {bill.category} · Due{" "}
+                        {days === 0
+                          ? "today"
+                          : days === 1
+                            ? "tomorrow"
+                            : `in ${days} days`}
+                        {bill.is_autopay ? " · Autopay" : ""}
+                      </p>
+                    </div>
+
+                    <p className="text-lg font-black text-[#061b3d]">
+                      {money(Number(bill.amount))}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
 
-        <section className="mb-4 flex flex-wrap gap-3 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-lg">
-          <FilterButton
-            label="This Week"
-            active={filterRange === "week"}
-            onClick={() => setFilterRange("week")}
-          />
-
-          <FilterButton
-            label="This Month"
-            active={filterRange === "month"}
-            onClick={() => setFilterRange("month")}
-          />
-
-          <FilterButton
-            label="All Time"
-            active={filterRange === "all"}
-            onClick={() => setFilterRange("all")}
-          />
-        </section>
-
-        <section className="mb-6 grid gap-4 md:grid-cols-4">
-          <MetricCard label="Total Income" value={money(totals.totalIncome)} />
-          <MetricCard label="Total Spent" value={money(totals.totalSpent)} />
-          <MetricCard label="Safe to Spend" value={money(totals.safeToSpend)} />
-          <MetricCard label="Risk Level" value={totals.risk} />
-        </section>
-
-        <section className="mb-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
           <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h3 className="text-2xl font-black text-[#061b3d]">
                 Category Pressure
               </h3>
               <p className="mt-1 text-sm text-slate-500">
-                Based on your weekly budget limits and selected date filter.
+                Based on your selected time filter.
               </p>
             </div>
 
             <a
               href="/budgets"
-              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-center font-black text-white shadow-lg"
+              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-center text-sm font-black text-white shadow-lg"
             >
               Edit Budgets
             </a>
           </div>
 
           {categoryPressure.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-              <h4 className="text-xl font-black text-[#061b3d]">
-                Set your weekly spending guardrails
-              </h4>
-
-              <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
-                Add weekly limits for groceries, shopping, dining,
-                transportation, and subscriptions. SafeSpend will use those
-                limits to show when you are on track, close to overspending, or
-                over budget.
-              </p>
-
-              <div className="mt-5 flex flex-wrap justify-center gap-3">
-                <a
-                  href="/onboarding"
-                  className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
-                >
-                  Start Setup
-                </a>
-
-                <a
-                  href="/budgets"
-                  className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-black text-[#061b3d]"
-                >
-                  Edit Budgets
-                </a>
-              </div>
-            </div>
+            <EmptyState
+              title="No budget limits yet"
+              description="Add weekly category limits so SafeSpend can warn you before you overspend."
+              href="/budgets"
+              action="Set Budgets"
+            />
           ) : (
             <div className="space-y-4">
-              {categoryPressure.map((item) => (
+              {categoryPressure.slice(0, 5).map((item) => (
                 <div
                   key={item.category}
                   className="rounded-3xl border border-slate-100 bg-slate-50 p-4"
@@ -673,6 +746,7 @@ export default function DashboardPage() {
                       <p className="font-black text-[#061b3d]">
                         {item.category}
                       </p>
+
                       <p className="text-sm text-slate-500">
                         {money(item.spent)} spent of {money(item.limit)}
                       </p>
@@ -714,452 +788,115 @@ export default function DashboardPage() {
             </div>
           )}
         </section>
+      </section>
 
-        <section className="mb-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-          <div className="mb-5">
-            <p className="mb-2 inline-flex rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-cyan-700">
-              SafeSpend AI Coach
-            </p>
-
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
             <h3 className="text-2xl font-black text-[#061b3d]">
-              Tell SafeSpend what happened.
-            </h3>
-
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              Log a transaction, check a purchase before buying, or ask for help
-              after overspending. SafeSpend will fill the form when it detects a
-              transaction.
-            </p>
-
-            {userSettings ? (
-              <p className="mt-3 inline-flex rounded-full bg-green-50 px-4 py-2 text-xs font-black text-green-700">
-                Personal settings active
-              </p>
-            ) : (
-              <a
-                href="/settings"
-                className="mt-3 inline-flex rounded-full bg-yellow-50 px-4 py-2 text-xs font-black text-yellow-700"
-              >
-                Add personal settings for better guidance →
-              </a>
-            )}
-          </div>
-
-          <form
-            onSubmit={handleSafeSpendCoach}
-            className="grid gap-3 md:grid-cols-[1fr_auto]"
-          >
-            <input
-              value={aiMessage}
-              onChange={(event) => setAiMessage(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-              placeholder="Example: I spent 64 at Publix yesterday"
-            />
-
-            <button
-              type="submit"
-              disabled={aiLoading || !aiMessage.trim()}
-              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-6 py-3 font-black text-white shadow-lg disabled:opacity-60"
-            >
-              {aiLoading ? "Thinking..." : "Ask SafeSpend"}
-            </button>
-          </form>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {[
-              "I spent 64 at Publix yesterday",
-              "I got paid 1200 today",
-              "Can I spend 150 on clothes?",
-              "I overspent by 80 this week",
-              "I paid 200 toward my credit card",
-            ].map((example) => (
-              <button
-                key={example}
-                type="button"
-                onClick={() => setAiMessage(example)}
-                className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-[#061b3d]"
-              >
-                {example}
-              </button>
-            ))}
-          </div>
-
-          {aiResponse && (
-            <div className="mt-5 grid gap-4 md:grid-cols-[.9fr_1.1fr]">
-              <div className="rounded-3xl border border-slate-100 bg-slate-50 p-5">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-500">
-                  Detected
-                </p>
-
-                <h4 className="mt-2 text-xl font-black text-[#061b3d]">
-                  {formatIntentLabel(aiResponse.intent)}
-                </h4>
-
-                <div className="mt-4 space-y-2 text-sm text-slate-600">
-                  <p>
-                    <strong>Type:</strong> {aiResponse.transaction.type}
-                  </p>
-                  <p>
-                    <strong>Category:</strong>{" "}
-                    {aiResponse.transaction.category}
-                  </p>
-                  <p>
-                    <strong>Merchant:</strong>{" "}
-                    {aiResponse.transaction.merchant}
-                  </p>
-                  <p>
-                    <strong>Amount:</strong>{" "}
-                    {money(aiResponse.transaction.amount)}
-                  </p>
-                  <p>
-                    <strong>Date:</strong> {aiResponse.transaction.date}
-                  </p>
-                </div>
-
-                {aiResponse.shouldAutofillTransaction ? (
-                  <p className="mt-4 rounded-2xl bg-green-50 p-3 text-sm font-bold text-green-700">
-                    Transaction form filled. Review it, then click Add
-                    Transaction.
-                  </p>
-                ) : (
-                  <p className="mt-4 rounded-2xl bg-yellow-50 p-3 text-sm font-bold text-yellow-700">
-                    This looks like guidance, not a transaction to save.
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-                <div className="mb-4 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
-                    Risk: {aiResponse.coach.riskLevel}
-                  </span>
-
-                  <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-700">
-                    Category: {aiResponse.coach.categoryStatus}
-                  </span>
-
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
-                    Impact: {aiResponse.coach.safeToSpendImpact}
-                  </span>
-                </div>
-
-                <h4 className="text-xl font-black text-[#061b3d]">
-                  SafeSpend Guidance
-                </h4>
-
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {aiResponse.coach.summary}
-                </p>
-
-                <div className="mt-4 space-y-3">
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">
-                      Weekly Impact
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-slate-600">
-                      {aiResponse.coach.weeklyImpact}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">
-                      Recommendation
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-slate-600">
-                      {aiResponse.coach.recommendation}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-gradient-to-r from-[#eefbff] to-[#f4fff6] p-4">
-                    <p className="text-xs font-black uppercase tracking-widest text-[#061b3d]">
-                      Next Best Action
-                    </p>
-                    <p className="mt-1 text-sm font-bold leading-6 text-[#061b3d]">
-                      {aiResponse.coach.nextBestAction}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-600">
-              {error}
-            </p>
-          )}
-        </section>
-
-        <section className="grid gap-6 md:grid-cols-[.9fr_1.1fr]">
-          <form
-            onSubmit={handleAddTransaction}
-            className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl"
-          >
-            <h3 className="mb-5 text-2xl font-black text-[#061b3d]">
-              Add Transaction
-            </h3>
-
-            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-              Transaction Date
-            </label>
-            <input
-              type="date"
-              required
-              value={transactionDate}
-              onChange={(event) => setTransactionDate(event.target.value)}
-              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-            />
-
-            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-              Type
-            </label>
-            <select
-              value={type}
-              onChange={(event) =>
-                setType(event.target.value as Transaction["type"])
-              }
-              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-            >
-              <option value="Income">Income</option>
-              <option value="Expense">Expense</option>
-              <option value="Transfer">Transfer</option>
-              <option value="Debt">Debt</option>
-              <option value="Savings">Savings</option>
-              <option value="Event">Event</option>
-            </select>
-
-            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-              Category
-            </label>
-            <select
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-            >
-              {categories.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-
-            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-              Merchant / Person
-            </label>
-            <input
-              value={merchant}
-              onChange={(event) => setMerchant(event.target.value)}
-              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-              placeholder="Publix, Kroger, Payroll, Zelle..."
-            />
-
-            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-              Description
-            </label>
-            <input
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-              placeholder="Short note"
-            />
-
-            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-              Amount
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              required
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-              className="mb-5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-              placeholder="64.00"
-            />
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-6 py-3 font-black text-white shadow-lg disabled:opacity-60"
-            >
-              {saving ? "Saving..." : "Add Transaction"}
-            </button>
-          </form>
-
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-            <h3 className="mb-5 text-2xl font-black text-[#061b3d]">
               Recent Transactions
             </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Latest activity from the selected period.
+            </p>
+          </div>
 
-            {filteredTransactions.length === 0 ? (
-              <p className="rounded-2xl bg-slate-50 p-5 text-slate-500">
-                No transactions found for this filter.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {filteredTransactions.slice(0, 15).map((tx) => (
-                  <div
-                    key={tx.id}
-                    className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
-                  >
-                    {editingId === tx.id ? (
-                      <div className="space-y-3">
-                        <input
-                          type="date"
-                          value={editDate}
-                          onChange={(event) => setEditDate(event.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-                        />
+          <a
+            href="/transactions"
+            className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-center text-sm font-black text-white shadow-lg"
+          >
+            Manage Transactions
+          </a>
+        </div>
 
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <select
-                            value={editType}
-                            onChange={(event) =>
-                              setEditType(
-                                event.target.value as Transaction["type"]
-                              )
-                            }
-                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-                          >
-                            <option value="Income">Income</option>
-                            <option value="Expense">Expense</option>
-                            <option value="Transfer">Transfer</option>
-                            <option value="Debt">Debt</option>
-                            <option value="Savings">Savings</option>
-                            <option value="Event">Event</option>
-                          </select>
+        {recentTransactions.length === 0 ? (
+          <EmptyState
+            title="No recent transactions"
+            description="Add income, expenses, savings, transfers, or debt payments from the Transactions page."
+            href="/transactions"
+            action="Add Transaction"
+          />
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {recentTransactions.map((tx) => (
+              <div
+                key={tx.id}
+                className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-black text-[#061b3d]">
+                      {tx.merchant || tx.category}
+                    </p>
 
-                          <select
-                            value={editCategory}
-                            onChange={(event) =>
-                              setEditCategory(event.target.value)
-                            }
-                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-                          >
-                            {categories.map((item) => (
-                              <option key={item} value={item}>
-                                {item}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                    <p className="text-sm text-slate-500">
+                      {tx.type} · {tx.category} · {formatDate(tx.date)}
+                    </p>
 
-                        <input
-                          value={editMerchant}
-                          onChange={(event) =>
-                            setEditMerchant(event.target.value)
-                          }
-                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-                          placeholder="Merchant / Person"
-                        />
-
-                        <input
-                          value={editDescription}
-                          onChange={(event) =>
-                            setEditDescription(event.target.value)
-                          }
-                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-                          placeholder="Description"
-                        />
-
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={editAmount}
-                          onChange={(event) =>
-                            setEditAmount(event.target.value)
-                          }
-                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-                          placeholder="Amount"
-                        />
-
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateTransaction(tx.id)}
-                            disabled={saving}
-                            className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-4 py-2 text-sm font-black text-white"
-                          >
-                            Save
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={cancelEditing}
-                            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-[#061b3d]"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between gap-4">
-                        <div>
-                          <p className="font-black text-[#061b3d]">
-                            {tx.merchant || tx.category}
-                          </p>
-
-                          <p className="text-sm text-slate-500">
-                            {tx.type} · {tx.category} · {formatDate(tx.date)}
-                          </p>
-
-                          {tx.description && (
-                            <p className="mt-1 text-xs text-slate-400">
-                              {tx.description}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="text-right">
-                          <p
-                            className={`font-black ${
-                              Number(tx.amount) < 0
-                                ? "text-red-500"
-                                : "text-green-600"
-                            }`}
-                          >
-                            {money(Number(tx.amount))}
-                          </p>
-
-                          <div className="mt-2 flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => startEditing(tx)}
-                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-[#061b3d]"
-                            >
-                              Edit
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteTransaction(tx.id)}
-                              className="rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-black text-red-600"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                    {tx.description && (
+                      <p className="mt-1 text-xs text-slate-400">
+                        {tx.description}
+                      </p>
                     )}
                   </div>
-                ))}
+
+                  <p
+                    className={`whitespace-nowrap font-black ${
+                      Number(tx.amount) < 0
+                        ? "text-red-500"
+                        : "text-green-600"
+                    }`}
+                  >
+                    {money(Number(tx.amount))}
+                  </p>
+                </div>
               </div>
-            )}
+            ))}
           </div>
-        </section>
+        )}
       </section>
-    </main>
+    </AppShell>
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function MetricCard({
+  label,
+  value,
+  helper,
+  danger = false,
+}: {
+  label: string;
+  value: string;
+  helper: string;
+  danger?: boolean;
+}) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-lg">
-      <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+    <div
+      className={`rounded-3xl border p-5 shadow-lg ${
+        danger
+          ? "border-red-100 bg-red-50"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <p
+        className={`text-xs font-black uppercase tracking-widest ${
+          danger ? "text-red-500" : "text-slate-500"
+        }`}
+      >
         {label}
       </p>
-      <p className="mt-2 text-2xl font-black text-[#061b3d]">{value}</p>
+
+      <p
+        className={`mt-2 text-2xl font-black ${
+          danger ? "text-red-700" : "text-[#061b3d]"
+        }`}
+      >
+        {value}
+      </p>
+
+      <p className={`mt-1 text-xs ${danger ? "text-red-600" : "text-slate-500"}`}>
+        {helper}
+      </p>
     </div>
   );
 }
@@ -1185,5 +922,54 @@ function FilterButton({
     >
       {label}
     </button>
+  );
+}
+
+function QuickLink({
+  href,
+  title,
+  description,
+}: {
+  href: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="rounded-3xl border border-slate-200 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:shadow-lg"
+    >
+      <p className="font-black text-[#061b3d]">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
+    </a>
+  );
+}
+
+function EmptyState({
+  title,
+  description,
+  href,
+  action,
+}: {
+  title: string;
+  description: string;
+  href: string;
+  action: string;
+}) {
+  return (
+    <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+      <h4 className="text-xl font-black text-[#061b3d]">{title}</h4>
+
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+        {description}
+      </p>
+
+      <a
+        href={href}
+        className="mt-5 inline-flex rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
+      >
+        {action}
+      </a>
+    </div>
   );
 }

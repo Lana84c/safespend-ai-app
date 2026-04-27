@@ -1,0 +1,893 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase/client";
+
+type Bill = {
+  id: string;
+  user_id: string;
+  bill_name: string;
+  category: string;
+  amount: number;
+  due_date: string;
+  frequency:
+    | "one_time"
+    | "weekly"
+    | "biweekly"
+    | "monthly"
+    | "quarterly"
+    | "yearly";
+  is_autopay: boolean;
+  is_paid: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const categories = [
+  "Bills",
+  "Rent/Mortgage",
+  "Utilities",
+  "Phone",
+  "Internet",
+  "Insurance",
+  "Debt",
+  "Subscriptions",
+  "Transportation",
+  "Other",
+];
+
+const frequencies = [
+  { label: "One Time", value: "one_time" },
+  { label: "Weekly", value: "weekly" },
+  { label: "Biweekly", value: "biweekly" },
+  { label: "Monthly", value: "monthly" },
+  { label: "Quarterly", value: "quarterly" },
+  { label: "Yearly", value: "yearly" },
+] as const;
+
+function getTodayDate() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function addDays(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().split("T")[0];
+}
+
+function money(value: number) {
+  return Number(value || 0).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+}
+
+function formatDate(dateValue: string) {
+  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function daysUntil(dateValue: string) {
+  const today = new Date(`${getTodayDate()}T00:00:00`);
+  const due = new Date(`${dateValue}T00:00:00`);
+  const diff = due.getTime() - today.getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+function getDueStatus(bill: Bill) {
+  if (bill.is_paid) {
+    return {
+      label: "Paid",
+      className: "bg-green-100 text-green-700",
+    };
+  }
+
+  const days = daysUntil(bill.due_date);
+
+  if (days < 0) {
+    return {
+      label: "Overdue",
+      className: "bg-red-100 text-red-700",
+    };
+  }
+
+  if (days === 0) {
+    return {
+      label: "Due Today",
+      className: "bg-red-100 text-red-700",
+    };
+  }
+
+  if (days <= 3) {
+    return {
+      label: `Due in ${days} days`,
+      className: "bg-yellow-100 text-yellow-700",
+    };
+  }
+
+  if (days <= 7) {
+    return {
+      label: `Due in ${days} days`,
+      className: "bg-blue-100 text-blue-700",
+    };
+  }
+
+  return {
+    label: `Due in ${days} days`,
+    className: "bg-slate-100 text-slate-600",
+  };
+}
+
+export default function BillsPage() {
+  const router = useRouter();
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+
+  const [bills, setBills] = useState<Bill[]>([]);
+
+  const [billName, setBillName] = useState("");
+  const [category, setCategory] = useState("Bills");
+  const [amount, setAmount] = useState("");
+  const [dueDate, setDueDate] = useState(addDays(7));
+  const [frequency, setFrequency] = useState<Bill["frequency"]>("monthly");
+  const [isAutopay, setIsAutopay] = useState(false);
+  const [isPaid, setIsPaid] = useState(false);
+  const [notes, setNotes] = useState("");
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editBillName, setEditBillName] = useState("");
+  const [editCategory, setEditCategory] = useState("Bills");
+  const [editAmount, setEditAmount] = useState("");
+  const [editDueDate, setEditDueDate] = useState(getTodayDate());
+  const [editFrequency, setEditFrequency] =
+    useState<Bill["frequency"]>("monthly");
+  const [editIsAutopay, setEditIsAutopay] = useState(false);
+  const [editIsPaid, setEditIsPaid] = useState(false);
+  const [editNotes, setEditNotes] = useState("");
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    checkUser();
+  }, []);
+
+  async function checkUser() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    setUserId(user.id);
+    setEmail(user.email || "");
+
+    await loadBills(user.id);
+
+    setLoading(false);
+  }
+
+  async function loadBills(currentUserId: string) {
+    const { data, error } = await supabase
+      .from("bills")
+      .select("*")
+      .eq("user_id", currentUserId)
+      .order("is_paid", { ascending: true })
+      .order("due_date", { ascending: true });
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setBills((data || []) as Bill[]);
+  }
+
+  const billSummary = useMemo(() => {
+    const unpaidBills = bills.filter((bill) => !bill.is_paid);
+
+    const unpaidTotal = unpaidBills.reduce(
+      (sum, bill) => sum + Number(bill.amount || 0),
+      0
+    );
+
+    const dueSoonBills = unpaidBills.filter((bill) => {
+      const days = daysUntil(bill.due_date);
+      return days >= 0 && days <= 7;
+    });
+
+    const dueSoonTotal = dueSoonBills.reduce(
+      (sum, bill) => sum + Number(bill.amount || 0),
+      0
+    );
+
+    const overdueBills = unpaidBills.filter(
+      (bill) => daysUntil(bill.due_date) < 0
+    );
+
+    const autopayTotal = unpaidBills
+      .filter((bill) => bill.is_autopay)
+      .reduce((sum, bill) => sum + Number(bill.amount || 0), 0);
+
+    return {
+      unpaidTotal,
+      dueSoonTotal,
+      dueSoonCount: dueSoonBills.length,
+      overdueCount: overdueBills.length,
+      autopayTotal,
+    };
+  }, [bills]);
+
+  async function handleAddBill(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!userId) return;
+
+    setSaving(true);
+    setError("");
+    setStatus("");
+
+    const numericAmount = Number(amount);
+
+    if (!billName.trim()) {
+      setError("Please enter a bill name.");
+      setSaving(false);
+      return;
+    }
+
+    if (!numericAmount || numericAmount <= 0) {
+      setError("Please enter an amount greater than 0.");
+      setSaving(false);
+      return;
+    }
+
+    const { error } = await supabase.from("bills").insert({
+      user_id: userId,
+      bill_name: billName.trim(),
+      category,
+      amount: numericAmount,
+      due_date: dueDate,
+      frequency,
+      is_autopay: isAutopay,
+      is_paid: isPaid,
+      notes: notes.trim() || null,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      setError(error.message);
+      setSaving(false);
+      return;
+    }
+
+    setBillName("");
+    setCategory("Bills");
+    setAmount("");
+    setDueDate(addDays(7));
+    setFrequency("monthly");
+    setIsAutopay(false);
+    setIsPaid(false);
+    setNotes("");
+
+    await loadBills(userId);
+
+    setStatus("Bill added.");
+    setSaving(false);
+  }
+
+  function startEditing(bill: Bill) {
+    setEditingId(bill.id);
+    setEditBillName(bill.bill_name);
+    setEditCategory(bill.category);
+    setEditAmount(String(Number(bill.amount || 0)));
+    setEditDueDate(bill.due_date);
+    setEditFrequency(bill.frequency);
+    setEditIsAutopay(bill.is_autopay);
+    setEditIsPaid(bill.is_paid);
+    setEditNotes(bill.notes || "");
+    setError("");
+    setStatus("");
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setEditBillName("");
+    setEditCategory("Bills");
+    setEditAmount("");
+    setEditDueDate(getTodayDate());
+    setEditFrequency("monthly");
+    setEditIsAutopay(false);
+    setEditIsPaid(false);
+    setEditNotes("");
+  }
+
+  async function handleUpdateBill(billId: string) {
+    if (!userId) return;
+
+    setSaving(true);
+    setError("");
+    setStatus("");
+
+    const numericAmount = Number(editAmount);
+
+    if (!editBillName.trim()) {
+      setError("Please enter a bill name.");
+      setSaving(false);
+      return;
+    }
+
+    if (!numericAmount || numericAmount <= 0) {
+      setError("Please enter an amount greater than 0.");
+      setSaving(false);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("bills")
+      .update({
+        bill_name: editBillName.trim(),
+        category: editCategory,
+        amount: numericAmount,
+        due_date: editDueDate,
+        frequency: editFrequency,
+        is_autopay: editIsAutopay,
+        is_paid: editIsPaid,
+        notes: editNotes.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", billId)
+      .eq("user_id", userId);
+
+    if (error) {
+      setError(error.message);
+      setSaving(false);
+      return;
+    }
+
+    cancelEditing();
+    await loadBills(userId);
+
+    setStatus("Bill updated.");
+    setSaving(false);
+  }
+
+  async function handleTogglePaid(bill: Bill) {
+    if (!userId) return;
+
+    setError("");
+    setStatus("");
+
+    const { error } = await supabase
+      .from("bills")
+      .update({
+        is_paid: !bill.is_paid,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", bill.id)
+      .eq("user_id", userId);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    await loadBills(userId);
+  }
+
+  async function handleDeleteBill(billId: string) {
+    if (!userId) return;
+
+    const confirmed = window.confirm(
+      "Delete this bill? This cannot be undone."
+    );
+
+    if (!confirmed) return;
+
+    setError("");
+    setStatus("");
+
+    const { error } = await supabase
+      .from("bills")
+      .delete()
+      .eq("id", billId)
+      .eq("user_id", userId);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    await loadBills(userId);
+    setStatus("Bill deleted.");
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/login");
+  }
+
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f4f8fb]">
+        <p className="text-lg font-bold text-[#061b3d]">Loading bills...</p>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-gradient-to-br from-[#eefbff] via-white to-[#f7fbfd] px-6 py-8 text-[#102033]">
+      <section className="mx-auto max-w-6xl">
+        <header className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-4">
+            <img
+              src="/safespend-logo.png"
+              alt="SafeSpend AI logo"
+              className="h-14 w-14 rounded-2xl shadow-lg"
+            />
+
+            <div>
+              <h1 className="text-2xl font-black text-[#061b3d]">
+                Bills & Obligations
+              </h1>
+              <p className="text-sm text-slate-500">{email}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <a
+              href="/dashboard"
+              className="rounded-full border border-slate-200 bg-white px-5 py-3 font-black text-[#061b3d] shadow-sm"
+            >
+              Dashboard
+            </a>
+
+            <a
+              href="/budgets"
+              className="rounded-full border border-slate-200 bg-white px-5 py-3 font-black text-[#061b3d] shadow-sm"
+            >
+              Budgets
+            </a>
+
+            <a
+              href="/settings"
+              className="rounded-full border border-slate-200 bg-white px-5 py-3 font-black text-[#061b3d] shadow-sm"
+            >
+              Settings
+            </a>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-full border border-slate-200 bg-white px-5 py-3 font-black text-[#061b3d] shadow-sm"
+            >
+              Log Out
+            </button>
+          </div>
+        </header>
+
+        <section className="mb-6 rounded-[2rem] bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-8 text-white shadow-2xl">
+          <p className="mb-3 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-bold">
+            Upcoming Money Obligations
+          </p>
+
+          <h2 className="max-w-4xl text-5xl font-black leading-[0.95] tracking-[-0.05em] md:text-6xl">
+            Track the money that is already spoken for.
+          </h2>
+
+          <p className="mt-5 max-w-2xl text-white/80">
+            Add bills, subscriptions, debt payments, and due dates so SafeSpend
+            can give smarter safe-to-spend guidance.
+          </p>
+        </section>
+
+        <section className="mb-6 grid gap-4 md:grid-cols-4">
+          <SummaryCard
+            label="Unpaid Bills"
+            value={money(billSummary.unpaidTotal)}
+            helper="Total still due"
+          />
+          <SummaryCard
+            label="Due Soon"
+            value={money(billSummary.dueSoonTotal)}
+            helper={`${billSummary.dueSoonCount} due within 7 days`}
+          />
+          <SummaryCard
+            label="Overdue"
+            value={String(billSummary.overdueCount)}
+            helper="Needs attention"
+          />
+          <SummaryCard
+            label="Autopay Scheduled"
+            value={money(billSummary.autopayTotal)}
+            helper="Unpaid autopay bills"
+          />
+        </section>
+
+        <section className="grid gap-6 md:grid-cols-[.9fr_1.1fr]">
+          <form
+            onSubmit={handleAddBill}
+            className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl"
+          >
+            <h3 className="mb-5 text-2xl font-black text-[#061b3d]">
+              Add Bill
+            </h3>
+
+            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
+              Bill Name
+            </label>
+            <input
+              required
+              value={billName}
+              onChange={(event) => setBillName(event.target.value)}
+              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+              placeholder="Power bill, Rent, Phone, Netflix..."
+            />
+
+            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
+              Category
+            </label>
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+            >
+              {categories.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+
+            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
+              Amount
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+              placeholder="180.00"
+            />
+
+            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
+              Due Date
+            </label>
+            <input
+              type="date"
+              required
+              value={dueDate}
+              onChange={(event) => setDueDate(event.target.value)}
+              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+            />
+
+            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
+              Frequency
+            </label>
+            <select
+              value={frequency}
+              onChange={(event) =>
+                setFrequency(event.target.value as Bill["frequency"])
+              }
+              className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+            >
+              {frequencies.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+
+            <div className="mb-4 grid gap-3 md:grid-cols-2">
+              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-[#061b3d]">
+                <input
+                  type="checkbox"
+                  checked={isAutopay}
+                  onChange={(event) => setIsAutopay(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Autopay
+              </label>
+
+              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-[#061b3d]">
+                <input
+                  type="checkbox"
+                  checked={isPaid}
+                  onChange={(event) => setIsPaid(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Already Paid
+              </label>
+            </div>
+
+            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
+              Notes
+            </label>
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              className="mb-5 min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+              placeholder="Optional notes about this bill..."
+            />
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-6 py-3 font-black text-white shadow-lg disabled:opacity-60"
+            >
+              {saving ? "Saving..." : "Add Bill"}
+            </button>
+
+            {status && (
+              <p className="mt-4 rounded-2xl bg-green-50 p-3 text-sm font-bold text-green-700">
+                {status}
+              </p>
+            )}
+
+            {error && (
+              <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-600">
+                {error}
+              </p>
+            )}
+          </form>
+
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 className="mb-5 text-2xl font-black text-[#061b3d]">
+              Upcoming Bills
+            </h3>
+
+            {bills.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                <h4 className="text-xl font-black text-[#061b3d]">
+                  No bills added yet
+                </h4>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+                  Add your rent, utilities, subscriptions, debt payments, and
+                  other upcoming obligations so SafeSpend can protect that money
+                  before you spend it.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {bills.map((bill) => {
+                  const status = getDueStatus(bill);
+
+                  return (
+                    <div
+                      key={bill.id}
+                      className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                    >
+                      {editingId === bill.id ? (
+                        <div className="space-y-3">
+                          <input
+                            value={editBillName}
+                            onChange={(event) =>
+                              setEditBillName(event.target.value)
+                            }
+                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                            placeholder="Bill Name"
+                          />
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <select
+                              value={editCategory}
+                              onChange={(event) =>
+                                setEditCategory(event.target.value)
+                              }
+                              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                            >
+                              {categories.map((item) => (
+                                <option key={item} value={item}>
+                                  {item}
+                                </option>
+                              ))}
+                            </select>
+
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={editAmount}
+                              onChange={(event) =>
+                                setEditAmount(event.target.value)
+                              }
+                              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                              placeholder="Amount"
+                            />
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <input
+                              type="date"
+                              value={editDueDate}
+                              onChange={(event) =>
+                                setEditDueDate(event.target.value)
+                              }
+                              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                            />
+
+                            <select
+                              value={editFrequency}
+                              onChange={(event) =>
+                                setEditFrequency(
+                                  event.target.value as Bill["frequency"]
+                                )
+                              }
+                              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                            >
+                              {frequencies.map((item) => (
+                                <option key={item.value} value={item.value}>
+                                  {item.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-[#061b3d]">
+                              <input
+                                type="checkbox"
+                                checked={editIsAutopay}
+                                onChange={(event) =>
+                                  setEditIsAutopay(event.target.checked)
+                                }
+                                className="h-4 w-4"
+                              />
+                              Autopay
+                            </label>
+
+                            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-[#061b3d]">
+                              <input
+                                type="checkbox"
+                                checked={editIsPaid}
+                                onChange={(event) =>
+                                  setEditIsPaid(event.target.checked)
+                                }
+                                className="h-4 w-4"
+                              />
+                              Paid
+                            </label>
+                          </div>
+
+                          <textarea
+                            value={editNotes}
+                            onChange={(event) =>
+                              setEditNotes(event.target.value)
+                            }
+                            className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+                            placeholder="Notes"
+                          />
+
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateBill(bill.id)}
+                              disabled={saving}
+                              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-4 py-2 text-sm font-black text-white"
+                            >
+                              Save
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={cancelEditing}
+                              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-[#061b3d]"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-black text-[#061b3d]">
+                                  {bill.bill_name}
+                                </p>
+
+                                <span
+                                  className={`rounded-full px-3 py-1 text-xs font-black ${status.className}`}
+                                >
+                                  {status.label}
+                                </span>
+
+                                {bill.is_autopay && (
+                                  <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-700">
+                                    Autopay
+                                  </span>
+                                )}
+                              </div>
+
+                              <p className="mt-1 text-sm text-slate-500">
+                                {bill.category} · {formatDate(bill.due_date)} ·{" "}
+                                {bill.frequency.replace("_", " ")}
+                              </p>
+
+                              {bill.notes && (
+                                <p className="mt-2 text-xs leading-5 text-slate-400">
+                                  {bill.notes}
+                                </p>
+                              )}
+                            </div>
+
+                            <p className="text-right text-lg font-black text-[#061b3d]">
+                              {money(Number(bill.amount))}
+                            </p>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePaid(bill)}
+                              className={`rounded-full px-3 py-1 text-xs font-black ${
+                                bill.is_paid
+                                  ? "bg-yellow-50 text-yellow-700"
+                                  : "bg-green-50 text-green-700"
+                              }`}
+                            >
+                              {bill.is_paid ? "Mark Unpaid" : "Mark Paid"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => startEditing(bill)}
+                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-[#061b3d]"
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBill(bill.id)}
+                              className="rounded-full border border-red-100 bg-red-50 px-3 py-1 text-xs font-black text-red-600"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+      </section>
+    </main>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  helper,
+}: {
+  label: string;
+  value: string;
+  helper: string;
+}) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-lg">
+      <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+        {label}
+      </p>
+      <p className="mt-2 text-2xl font-black text-[#061b3d]">{value}</p>
+      <p className="mt-1 text-xs text-slate-500">{helper}</p>
+    </div>
+  );
+}
