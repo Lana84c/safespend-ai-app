@@ -45,28 +45,31 @@ export default function AppShell({
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f8fb] px-4 pb-10 pt-4 text-[#061b3d] sm:px-6 lg:px-8">
+    <main className="min-h-screen overflow-x-hidden bg-[#f4f8fb] px-3 pb-8 pt-3 text-[#061b3d] sm:px-6 sm:pb-10 sm:pt-4 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        <header className="sticky top-4 z-50 mb-7">
-          <div className="rounded-[2rem] border border-white/70 bg-white/92 p-4 shadow-xl backdrop-blur-xl">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <Link href="/dashboard" className="flex items-center gap-3">
-                <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[1.75rem] bg-white shadow-[0_18px_50px_rgba(0,183,199,0.35)] ring-1 ring-cyan-100">
-  <Image
-    src="/safespend-logo.png"
-    alt="SafeSpend AI logo"
-    width={95}
-    height={95}
-    className="h-full w-full scale-150 object-contain"
-    priority
-  />
-</div>
+        <header className="sticky top-3 z-50 mb-5 sm:top-4 sm:mb-7">
+          <div className="rounded-[1.5rem] border border-white/70 bg-white/92 p-3 shadow-xl backdrop-blur-xl sm:rounded-[2rem] sm:p-4">
+            <div className="flex items-center justify-between gap-3">
+              <Link
+                href="/dashboard"
+                className="flex min-w-0 items-center gap-3"
+              >
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] bg-white shadow-[0_14px_35px_rgba(0,183,199,0.28)] ring-1 ring-cyan-100 sm:h-20 sm:w-20 sm:rounded-[1.5rem] lg:h-24 lg:w-24 lg:rounded-[1.75rem]">
+                  <Image
+                    src="/safespend-logo.png"
+                    alt="SafeSpend AI logo"
+                    width={180}
+                    height={180}
+                    className="h-full w-full scale-150 object-contain"
+                    priority
+                  />
+                </div>
 
-                <div className="min-w-fit">
-                  <p className="text-xl font-black tracking-[-0.03em] text-[#061b3d]">
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-black tracking-[-0.03em] text-[#061b3d] sm:text-xl">
                     SafeSpend AI
                   </p>
-                  <p className="text-xs font-bold text-slate-500">
+                  <p className="truncate text-xs font-bold text-slate-500">
                     Spending Coach
                   </p>
                 </div>
@@ -92,7 +95,7 @@ export default function AppShell({
               <button
                 type="button"
                 onClick={() => setMenuOpen((current) => !current)}
-                className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-[#061b3d] lg:hidden"
+                className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-black text-[#061b3d] sm:px-5 sm:py-3 lg:hidden"
               >
                 {menuOpen ? "Close" : "Menu"}
               </button>
@@ -132,7 +135,7 @@ export default function AppShell({
                         key={item.href}
                         href={item.href}
                         onClick={() => setMenuOpen(false)}
-                        className={`rounded-2xl px-4 py-3 text-sm font-black ${
+                        className={`rounded-2xl px-4 py-3 text-center text-sm font-black ${
                           active
                             ? "bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] text-white shadow-lg"
                             : "bg-slate-50 text-[#061b3d]"
@@ -146,7 +149,7 @@ export default function AppShell({
 
                 <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
                   {email && (
-                    <p className="truncate rounded-full bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500">
+                    <p className="truncate rounded-full bg-slate-50 px-4 py-3 text-center text-sm font-bold text-slate-500">
                       {email}
                     </p>
                   )}
@@ -165,12 +168,12 @@ export default function AppShell({
           </div>
         </header>
 
-        <section className="mb-6 overflow-hidden rounded-[2rem] border border-cyan-100 bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-6 text-white shadow-xl md:p-8">
+        <section className="mb-5 overflow-hidden rounded-[1.5rem] border border-cyan-100 bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-5 text-white shadow-xl sm:rounded-[2rem] md:mb-6 md:p-8">
           <div className="relative">
             <div className="absolute -right-10 -top-16 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
             <div className="absolute -bottom-20 left-1/3 h-44 w-44 rounded-full bg-[#5ce05c]/20 blur-3xl" />
 
-            <h1 className="relative max-w-5xl text-3xl font-black leading-tight tracking-[-0.04em] text-white md:text-5xl">
+            <h1 className="relative max-w-5xl text-2xl font-black leading-tight tracking-[-0.04em] text-white sm:text-3xl md:text-5xl">
               {title}
             </h1>
 

@@ -65,47 +65,47 @@ const tiers = [
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen overflow-hidden bg-[#f4f8fb] text-[#061b3d]">
-      <section className="relative px-4 py-6 sm:px-6 lg:px-8">
-        <div className="absolute left-1/2 top-0 h-96 w-96 -translate-x-1/2 rounded-full bg-cyan-200/30 blur-3xl" />
-        <div className="absolute right-0 top-40 h-80 w-80 rounded-full bg-green-200/30 blur-3xl" />
+    <main className="min-h-screen overflow-x-hidden bg-[#f4f8fb] text-[#061b3d]">
+      <section className="relative px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+        <div className="absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 rounded-full bg-cyan-200/30 blur-3xl sm:h-96 sm:w-96" />
+        <div className="absolute right-0 top-40 h-64 w-64 rounded-full bg-green-200/30 blur-3xl sm:h-80 sm:w-80" />
 
         <div className="relative mx-auto max-w-7xl">
-          <header className="mb-8 rounded-[2rem] border border-white/70 bg-white/90 p-4 shadow-xl backdrop-blur-xl">
+          <header className="mb-6 rounded-[1.5rem] border border-white/70 bg-white/90 p-3 shadow-xl backdrop-blur-xl sm:mb-8 sm:rounded-[2rem] sm:p-4">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <Link href="/" className="flex items-center gap-4">
-                <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[1.75rem] bg-white shadow-[0_18px_50px_rgba(0,183,199,0.35)] ring-1 ring-cyan-100">
+              <Link href="/" className="flex min-w-0 items-center gap-3 sm:gap-4">
+                <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.5rem] bg-white shadow-[0_18px_50px_rgba(0,183,199,0.35)] ring-1 ring-cyan-100 sm:h-24 sm:w-24 md:h-32 md:w-32 md:rounded-[2rem]">
                   <Image
                     src="/safespend-logo.png"
                     alt="SafeSpend AI logo"
-                    width={180}
-                    height={180}
+                    width={220}
+                    height={220}
                     className="h-full w-full scale-150 object-contain"
                     priority
                   />
                 </div>
 
-                <div>
-                  <p className="text-2xl font-black tracking-[-0.04em] text-[#061b3d]">
+                <div className="min-w-0">
+                  <p className="truncate text-xl font-black tracking-[-0.04em] text-[#061b3d] sm:text-2xl">
                     SafeSpend AI
                   </p>
-                  <p className="text-sm font-bold text-slate-500">
+                  <p className="truncate text-sm font-bold text-slate-500">
                     Spending Coach
                   </p>
                 </div>
               </Link>
 
-              <div className="flex flex-wrap gap-3">
+              <div className="grid w-full gap-3 sm:flex sm:w-auto sm:flex-wrap">
                 <Link
                   href="/login"
-                  className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-black text-[#061b3d] shadow-sm transition hover:bg-slate-50"
+                  className="rounded-full border border-slate-200 bg-white px-5 py-3 text-center text-sm font-black text-[#061b3d] shadow-sm transition hover:bg-slate-50"
                 >
                   Log In
                 </Link>
 
                 <Link
                   href="/signup"
-                  className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
+                  className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-center text-sm font-black text-white shadow-lg"
                 >
                   Get Started
                 </Link>
@@ -113,41 +113,41 @@ export default function HomePage() {
             </div>
           </header>
 
-          <section className="grid gap-8 lg:grid-cols-[1.05fr_.95fr] lg:items-center">
-            <div className="rounded-[2.5rem] border border-cyan-100 bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-8 text-white shadow-2xl md:p-10">
+          <section className="grid gap-6 lg:grid-cols-[1.05fr_.95fr] lg:items-center lg:gap-8">
+            <div className="rounded-[2rem] border border-cyan-100 bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-6 text-white shadow-2xl sm:rounded-[2.5rem] sm:p-8 md:p-10">
               <p className="mb-4 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-widest text-white">
                 AI-powered spending clarity
               </p>
 
-              <h1 className="max-w-4xl text-5xl font-black leading-[0.95] tracking-[-0.06em] md:text-7xl">
+              <h1 className="max-w-4xl text-4xl font-black leading-[0.95] tracking-[-0.06em] sm:text-5xl md:text-7xl">
                 Ask before the money disappears.
               </h1>
 
-              <p className="mt-6 max-w-2xl text-base leading-7 text-white/82 md:text-lg">
+              <p className="mt-5 max-w-2xl text-sm leading-7 text-white/82 sm:mt-6 md:text-lg">
                 SafeSpend AI helps you track spending, protect bills, manage
                 budgets, and decide what is actually safe to spend before you
                 make another purchase.
               </p>
 
-              <div className="mt-8 flex flex-wrap gap-3">
+              <div className="mt-7 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap">
                 <Link
                   href="/signup"
-                  className="rounded-full bg-white px-6 py-4 text-sm font-black text-[#061b3d] shadow-lg"
+                  className="rounded-full bg-white px-6 py-4 text-center text-sm font-black text-[#061b3d] shadow-lg"
                 >
                   Start Free
                 </Link>
 
                 <Link
                   href="/billing"
-                  className="rounded-full border border-white/25 bg-white/10 px-6 py-4 text-sm font-black text-white"
+                  className="rounded-full border border-white/25 bg-white/10 px-6 py-4 text-center text-sm font-black text-white"
                 >
                   View Plans
                 </Link>
               </div>
             </div>
 
-            <div className="rounded-[2.5rem] border border-slate-200 bg-white p-6 shadow-xl">
-              <div className="rounded-[2rem] bg-slate-50 p-5">
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-xl sm:rounded-[2.5rem] sm:p-6">
+              <div className="rounded-[1.5rem] bg-slate-50 p-4 sm:rounded-[2rem] sm:p-5">
                 <p className="mb-3 inline-flex rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-cyan-700">
                   Example Coach Check
                 </p>
@@ -157,7 +157,7 @@ export default function HomePage() {
                     <p className="text-sm font-black text-slate-500">
                       You ask:
                     </p>
-                    <p className="mt-2 text-xl font-black tracking-[-0.03em] text-[#061b3d]">
+                    <p className="mt-2 text-lg font-black tracking-[-0.03em] text-[#061b3d] sm:text-xl">
                       “Can I spend $150 on clothes?”
                     </p>
                   </div>
@@ -166,7 +166,7 @@ export default function HomePage() {
                     <p className="text-sm font-black text-cyan-700">
                       SafeSpend responds:
                     </p>
-                    <p className="mt-2 text-lg font-black leading-7 text-[#061b3d]">
+                    <p className="mt-2 text-base font-black leading-7 text-[#061b3d] sm:text-lg">
                       Wait for now. Your upcoming bills and current spending
                       pressure make this a risky purchase.
                     </p>
@@ -188,7 +188,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="px-4 py-8 sm:px-6 lg:px-8">
+      <section className="px-3 py-7 sm:px-6 sm:py-8 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-5 md:grid-cols-3">
           {features.map((feature) => (
             <div
@@ -206,13 +206,13 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="px-4 pb-12 pt-4 sm:px-6 lg:px-8">
+      <section className="px-3 pb-10 pt-3 sm:px-6 sm:pb-12 sm:pt-4 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <div className="mb-6 text-center">
             <p className="mb-3 inline-flex rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-cyan-700">
               Simple plans
             </p>
-            <h2 className="text-4xl font-black tracking-[-0.05em] text-[#061b3d] md:text-5xl">
+            <h2 className="text-3xl font-black tracking-[-0.05em] text-[#061b3d] sm:text-4xl md:text-5xl">
               Choose the level of clarity you need.
             </h2>
           </div>

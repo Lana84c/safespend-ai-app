@@ -10,7 +10,7 @@ export default function LegalFooter() {
           banking advice.
         </p>
 
-        <div className="flex flex-wrap justify-center gap-4 text-xs font-black uppercase tracking-widest">
+        <div className="grid gap-3 text-xs font-black uppercase tracking-widest sm:flex sm:flex-wrap sm:justify-center sm:gap-4">
           <Link href="/privacy" className="hover:text-[#061b3d]">
             Privacy Policy
           </Link>
