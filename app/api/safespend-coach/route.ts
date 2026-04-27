@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
 
 type SafeSpendIntent =
@@ -73,18 +72,19 @@ const GEMINI_MODEL_CHAIN = [
   .filter(Boolean)
   .filter((model, index, array) => array.indexOf(model) === index);
 
-function getGeminiClient() {
+async function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
     return null;
   }
 
+  const { GoogleGenAI } = await import("@google/genai");
+
   return new GoogleGenAI({
     apiKey,
   });
 }
-
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
 }
@@ -519,7 +519,7 @@ Required JSON shape:
 `;
 }
 
-async function generateWithGemini(prompt: string, ai: GoogleGenAI) {
+async function generateWithGemini(prompt: string, ai: any) {
   let lastError: any = null;
 
   for (const model of GEMINI_MODEL_CHAIN) {
@@ -574,7 +574,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const ai = getGeminiClient();
+    const ai = await getGeminiClient();
 
     if (!ai) {
       console.warn("Missing GEMINI_API_KEY. Returning local fallback response.");
