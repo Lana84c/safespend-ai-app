@@ -47,14 +47,14 @@ export default function AppShell({
     <main className="min-h-screen bg-[#f4f8fb] px-4 pb-10 pt-4 text-[#061b3d] sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <header className="sticky top-4 z-50 mb-7">
-          <div className="rounded-[2rem] border border-white/70 bg-white/90 p-4 shadow-xl backdrop-blur-xl">
+          <div className="rounded-[2rem] border border-white/70 bg-white/92 p-4 shadow-xl backdrop-blur-xl">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <Link href="/dashboard" className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] text-xl font-black text-white shadow-lg">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] text-xl font-black text-white shadow-lg">
                   S
                 </div>
 
-                <div>
+                <div className="min-w-fit">
                   <p className="text-xl font-black tracking-[-0.03em] text-[#061b3d]">
                     SafeSpend AI
                   </p>
@@ -66,7 +66,7 @@ export default function AppShell({
 
               <div className="hidden items-center gap-3 lg:flex">
                 {email && (
-                  <div className="max-w-[260px] truncate rounded-full bg-slate-50 px-4 py-2 text-sm font-bold text-slate-500">
+                  <div className="max-w-[280px] truncate rounded-full bg-slate-50 px-4 py-2 text-sm font-bold text-slate-500">
                     {email}
                   </div>
                 )}
@@ -75,7 +75,7 @@ export default function AppShell({
                   type="button"
                   onClick={handleLogout}
                   disabled={loggingOut}
-                  className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-black text-[#061b3d] shadow-sm disabled:opacity-60"
+                  className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-black text-[#061b3d] shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loggingOut ? "Signing out..." : "Sign Out"}
                 </button>
@@ -147,7 +147,7 @@ export default function AppShell({
                     type="button"
                     onClick={handleLogout}
                     disabled={loggingOut}
-                    className="rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-black text-[#061b3d] shadow-sm disabled:opacity-60"
+                    className="rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-black text-[#061b3d] shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {loggingOut ? "Signing out..." : "Sign Out"}
                   </button>
@@ -157,22 +157,22 @@ export default function AppShell({
           </div>
         </header>
 
-        <section className="mb-6 overflow-hidden rounded-[2rem] border border-cyan-100 bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-6 text-white shadow-xl">
-  <div className="relative">
-    <div className="absolute -right-10 -top-16 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-    <div className="absolute -bottom-20 left-1/3 h-44 w-44 rounded-full bg-[#5ce05c]/20 blur-3xl" />
+        <section className="mb-6 overflow-hidden rounded-[2rem] border border-cyan-100 bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-6 text-white shadow-xl md:p-8">
+          <div className="relative">
+            <div className="absolute -right-10 -top-16 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+            <div className="absolute -bottom-20 left-1/3 h-44 w-44 rounded-full bg-[#5ce05c]/20 blur-3xl" />
 
-    <h1 className="relative max-w-5xl text-3xl font-black leading-tight tracking-[-0.04em] text-white md:text-5xl">
-      {title}
-    </h1>
+            <h1 className="relative max-w-5xl text-3xl font-black leading-tight tracking-[-0.04em] text-white md:text-5xl">
+              {title}
+            </h1>
 
-    {subtitle && (
-      <p className="relative mt-3 max-w-4xl text-sm leading-6 text-white/80 md:text-base">
-        {subtitle}
-      </p>
-    )}
-  </div>
-</section>
+            {subtitle && (
+              <p className="relative mt-3 max-w-4xl text-sm leading-6 text-white/80 md:text-base">
+                {subtitle}
+              </p>
+            )}
+          </div>
+        </section>
 
         {children}
       </div>
