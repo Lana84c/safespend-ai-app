@@ -3,49 +3,82 @@ import { blogPosts } from "@/lib/blogPosts";
 
 export default function BlogPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#eefbff] via-white to-[#f7fbfd] px-6 py-10 text-[#102033]">
+    <main className="min-h-screen bg-gradient-to-br from-[#eefbff] via-white to-[#f7fbfd] px-6 py-8 text-[#102033]">
       <section className="mx-auto max-w-6xl">
         <header className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="mb-2 text-sm font-black uppercase tracking-widest text-cyan-700">
-              SafeSpend AI Blog
-            </p>
+          <Link href="/" className="flex items-center gap-4">
+            <img
+              src="/safespend-logo.png"
+              alt="SafeSpend AI logo"
+              className="h-14 w-14 rounded-2xl shadow-lg"
+            />
 
-            <h1 className="text-5xl font-black tracking-[-0.05em] text-[#061b3d]">
-              Smarter spending starts here.
-            </h1>
-
-            <p className="mt-4 max-w-2xl text-slate-600">
-              Practical guides for paycheck budgeting, overspending recovery,
-              safe-to-spend planning, and better everyday money decisions.
-            </p>
-          </div>
-
-          <Link
-            href="/dashboard"
-            className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-6 py-3 text-center font-black text-white shadow-lg"
-          >
-            Open Dashboard
+            <div>
+              <h1 className="text-2xl font-black text-[#061b3d]">
+                SafeSpend AI
+              </h1>
+              <p className="text-sm text-slate-500">
+                Know what you can spend before you spend it.
+              </p>
+            </div>
           </Link>
+
+          <nav className="flex flex-wrap gap-3">
+            <Link
+              href="/"
+              className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-black text-[#061b3d] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              Home
+            </Link>
+
+            <Link
+              href="/login"
+              className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-black text-[#061b3d] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              Log In
+            </Link>
+
+            <Link
+              href="/signup"
+              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
+            >
+              Start Free
+            </Link>
+          </nav>
         </header>
 
-        <section className="mb-8 rounded-[2rem] bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-8 text-white shadow-2xl">
+        <section className="mb-8 rounded-[2rem] bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-8 text-white shadow-2xl md:p-10">
           <p className="mb-3 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-bold">
-            Spending Control + Financial Awareness
+            SafeSpend AI Blog
           </p>
 
-          <h2 className="max-w-3xl text-4xl font-black leading-[0.98] tracking-[-0.05em] md:text-6xl">
-            Learn how to stop money from disappearing.
+          <h2 className="max-w-4xl text-5xl font-black leading-[0.95] tracking-[-0.055em] md:text-7xl">
+            Smarter spending starts here.
           </h2>
 
-          <p className="mt-5 max-w-2xl text-white/80">
-            SafeSpend helps you understand what you can spend before you spend
-            it, so you can protect bills, reduce stress, and make better
-            day-to-day decisions.
+          <p className="mt-5 max-w-2xl text-lg leading-8 text-white/80">
+            Practical guides for paycheck budgeting, overspending recovery,
+            safe-to-spend planning, and better everyday money decisions.
           </p>
+
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/signup"
+              className="inline-flex items-center justify-center rounded-full bg-white px-7 py-4 text-base font-black text-[#061b3d] shadow-xl transition hover:-translate-y-0.5 hover:shadow-2xl"
+            >
+              Start Free →
+            </Link>
+
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center rounded-full border border-white/25 bg-white/10 px-7 py-4 text-base font-black text-white backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/15"
+            >
+              Open Dashboard
+            </Link>
+          </div>
         </section>
 
-        <section className="grid gap-5 md:grid-cols-3">
+        <section className="mb-8 grid gap-5 md:grid-cols-3">
           {blogPosts.map((post) => (
             <Link
               key={post.slug}
@@ -71,6 +104,58 @@ export default function BlogPage() {
             </Link>
           ))}
         </section>
+
+        <section className="mb-8 rounded-[2rem] bg-gradient-to-br from-[#061b3d] via-[#0b4edb] to-[#00b7c7] p-8 text-center text-white shadow-2xl">
+          <h3 className="text-4xl font-black tracking-[-0.05em]">
+            Ready to check your safe-to-spend?
+          </h3>
+
+          <p className="mx-auto mt-4 max-w-2xl text-white/80">
+            Use SafeSpend AI to track income, expenses, budgets, bills, reports,
+            and smarter spending decisions.
+          </p>
+
+          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <Link
+              href="/signup"
+              className="inline-flex items-center justify-center rounded-full bg-white px-7 py-4 font-black text-[#061b3d] shadow-xl transition hover:-translate-y-0.5 hover:shadow-2xl"
+            >
+              Start Free →
+            </Link>
+
+            <Link
+              href="/login"
+              className="inline-flex items-center justify-center rounded-full border border-white/25 bg-white/10 px-7 py-4 font-black text-white transition hover:-translate-y-0.5 hover:bg-white/15"
+            >
+              Log In
+            </Link>
+          </div>
+        </section>
+
+        <footer className="mt-8 text-center text-sm text-slate-500">
+          <p>
+            SafeSpend AI is a spending-awareness tool, not financial, legal,
+            tax, or investment advice.
+          </p>
+
+          <div className="mt-3 flex flex-wrap justify-center gap-4">
+            <Link href="/privacy" className="font-bold text-[#061b3d]">
+              Privacy Policy
+            </Link>
+
+            <Link href="/terms" className="font-bold text-[#061b3d]">
+              Terms
+            </Link>
+
+            <Link href="/disclaimer" className="font-bold text-[#061b3d]">
+              Disclaimer
+            </Link>
+
+            <Link href="/blog" className="font-bold text-[#061b3d]">
+              Blog
+            </Link>
+          </div>
+        </footer>
       </section>
     </main>
   );
