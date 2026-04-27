@@ -34,7 +34,7 @@ type CoachRequestBody = {
     due_date?: string;
   }[];
   dueSoonBillsTotal?: number;
-  userSettings?: any;
+  userSettings?: unknown;
   plan?: string;
   coachUsage?: {
     used?: number;
@@ -65,6 +65,14 @@ type SafeSpendCoachResponse = {
   };
 };
 
+const GEMINI_MODEL_CHAIN = [
+  process.env.GEMINI_MODEL_PRIMARY || "gemini-2.5-flash-lite",
+  process.env.GEMINI_MODEL_FALLBACK || "gemini-2.5-flash",
+]
+  .map((model) => model.trim())
+  .filter(Boolean)
+  .filter((model, index, array) => array.indexOf(model) === index);
+
 function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -76,14 +84,6 @@ function getGeminiClient() {
     apiKey,
   });
 }
-
-const GEMINI_MODEL_CHAIN = [
-  process.env.GEMINI_MODEL_PRIMARY || "gemini-2.5-flash-lite",
-  process.env.GEMINI_MODEL_FALLBACK || "gemini-2.5-flash",
-]
-  .map((model) => model.trim())
-  .filter(Boolean)
-  .filter((model, index, array) => array.indexOf(model) === index);
 
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
@@ -112,6 +112,7 @@ function getErrorStatus(error: any) {
 
 function isRetryableGeminiError(error: any) {
   const status = getErrorStatus(error);
+  const message = String(error?.message || "").toLowerCase();
 
   return (
     status === 429 ||
@@ -119,8 +120,10 @@ function isRetryableGeminiError(error: any) {
     status === 502 ||
     status === 503 ||
     status === 504 ||
-    String(error?.message || "").toLowerCase().includes("high demand") ||
-    String(error?.message || "").toLowerCase().includes("unavailable")
+    message.includes("high demand") ||
+    message.includes("unavailable") ||
+    message.includes("rate limit") ||
+    message.includes("overloaded")
   );
 }
 
@@ -151,7 +154,10 @@ function parseJsonResponse(text: string): SafeSpendCoachResponse {
 }
 
 function extractAmount(message: string) {
-  const match = message.match(/(?:\$|about|around|maybe)?\s*(\d+(?:\.\d{1,2})?)/i);
+  const match = message.match(
+    /(?:\$|about|around|maybe)?\s*(\d+(?:\.\d{1,2})?)/i
+  );
+
   return match ? Number(match[1]) : 0;
 }
 
@@ -170,6 +176,7 @@ function extractMerchant(message: string) {
 
   for (const pattern of patterns) {
     const match = cleaned.match(pattern);
+
     if (match?.[1]) {
       return match[1].trim().replace(/[.!?]+$/, "");
     }
@@ -184,26 +191,74 @@ function categorize(message: string, merchant: string): string {
   if (text.includes("paid") && text.includes("credit")) return "Debt";
   if (text.includes("credit card")) return "Debt";
   if (text.includes("debt")) return "Debt";
-  if (text.includes("paycheck") || text.includes("got paid") || text.includes("deposit")) {
+
+  if (
+    text.includes("paycheck") ||
+    text.includes("got paid") ||
+    text.includes("deposit") ||
+    text.includes("income")
+  ) {
     return "Income";
   }
-  if (text.includes("publix") || text.includes("kroger") || text.includes("grocery")) {
+
+  if (
+    text.includes("publix") ||
+    text.includes("kroger") ||
+    text.includes("grocery") ||
+    text.includes("groceries")
+  ) {
     return "Groceries";
   }
-  if (text.includes("clothes") || text.includes("victoria") || text.includes("shopping")) {
+
+  if (
+    text.includes("clothes") ||
+    text.includes("victoria") ||
+    text.includes("shopping") ||
+    text.includes("target")
+  ) {
     return "Shopping";
   }
-  if (text.includes("gas") || text.includes("shell") || text.includes("transport")) {
+
+  if (
+    text.includes("gas") ||
+    text.includes("shell") ||
+    text.includes("transport") ||
+    text.includes("uber") ||
+    text.includes("lyft")
+  ) {
     return "Transportation";
   }
-  if (text.includes("rent") || text.includes("power") || text.includes("electric") || text.includes("bill")) {
+
+  if (
+    text.includes("rent") ||
+    text.includes("mortgage") ||
+    text.includes("power") ||
+    text.includes("electric") ||
+    text.includes("water") ||
+    text.includes("internet") ||
+    text.includes("bill")
+  ) {
     return "Bills";
   }
-  if (text.includes("restaurant") || text.includes("dining") || text.includes("food")) {
+
+  if (
+    text.includes("restaurant") ||
+    text.includes("dining") ||
+    text.includes("food") ||
+    text.includes("coffee")
+  ) {
     return "Dining";
   }
+
   if (text.includes("save") || text.includes("savings")) return "Savings";
-  if (text.includes("subscription") || text.includes("netflix") || text.includes("openai")) {
+
+  if (
+    text.includes("subscription") ||
+    text.includes("netflix") ||
+    text.includes("openai") ||
+    text.includes("spotify") ||
+    text.includes("hulu")
+  ) {
     return "Subscriptions";
   }
 
@@ -237,7 +292,8 @@ function detectIntent(message: string): SafeSpendIntent {
     text.includes("paid") ||
     text.includes("got paid") ||
     text.includes("income") ||
-    text.includes("deposit")
+    text.includes("deposit") ||
+    text.includes("bought")
   ) {
     return "log_transaction";
   }
@@ -245,10 +301,18 @@ function detectIntent(message: string): SafeSpendIntent {
   return "general_guidance";
 }
 
-function detectTransactionType(message: string, intent: SafeSpendIntent): TransactionType {
+function detectTransactionType(
+  message: string,
+  intent: SafeSpendIntent
+): TransactionType {
   const text = message.toLowerCase();
 
-  if (text.includes("got paid") || text.includes("paycheck") || text.includes("deposit")) {
+  if (
+    text.includes("got paid") ||
+    text.includes("paycheck") ||
+    text.includes("deposit") ||
+    text.includes("income")
+  ) {
     return "Income";
   }
 
@@ -260,7 +324,7 @@ function detectTransactionType(message: string, intent: SafeSpendIntent): Transa
     return "Savings";
   }
 
-  if (text.includes("transfer") || text.includes("zelle") || text.includes("venmo")) {
+  if (text.includes("transfer")) {
     return "Transfer";
   }
 
@@ -289,9 +353,11 @@ function findCategoryStatus(
   return match?.status || "OK";
 }
 
-function buildLocalFallbackResponse(body: CoachRequestBody): SafeSpendCoachResponse {
+function buildLocalFallbackResponse(
+  body: CoachRequestBody
+): SafeSpendCoachResponse {
   const message = String(body.message || "");
-  const safeToSpend = Number(body.safeToSpend || 0);
+  const currentSafeToSpend = Number(body.safeToSpend || 0);
   const amount = extractAmount(message);
   const intent = detectIntent(message);
   const merchant = extractMerchant(message);
@@ -302,38 +368,41 @@ function buildLocalFallbackResponse(body: CoachRequestBody): SafeSpendCoachRespo
     : getTodayDate();
 
   const signedImpact =
-    type === "Income"
-      ? amount
-      : intent === "purchase_check"
-        ? -Math.abs(amount)
-        : -Math.abs(amount);
+    type === "Income" ? Math.abs(amount) : -Math.abs(amount);
 
-  const projectedSafeToSpend = safeToSpend + signedImpact;
+  const projectedSafeToSpend = currentSafeToSpend + signedImpact;
   const riskLevel = getRiskLevel(projectedSafeToSpend);
   const categoryStatus = findCategoryStatus(category, body.categoryPressure);
 
   const shouldAutofillTransaction =
-    intent === "log_transaction" && amount > 0 && type !== "Transfer";
+    intent === "log_transaction" && amount > 0;
 
-  let summary = "SafeSpend is using a backup response because the AI model is temporarily unavailable.";
+  let summary =
+    "SafeSpend is using a backup response because the AI model is temporarily unavailable.";
 
   if (intent === "purchase_check") {
     summary =
       amount > 0
-        ? `This purchase would reduce your safe-to-spend by ${money(amount)}. Your projected safe-to-spend would be ${money(projectedSafeToSpend)}.`
+        ? `This purchase would reduce your safe-to-spend by ${money(
+            amount
+          )}. Your projected safe-to-spend would be ${money(
+            projectedSafeToSpend
+          )}.`
         : "I need the purchase amount before I can give a useful spending recommendation.";
   }
 
   if (intent === "log_transaction") {
     summary =
       amount > 0
-        ? `I detected a ${type.toLowerCase()} entry for ${money(amount)}${merchant ? ` connected to ${merchant}` : ""}. Review the filled transaction before saving it.`
+        ? `I detected a ${type.toLowerCase()} entry for ${money(amount)}${
+            merchant ? ` connected to ${merchant}` : ""
+          }. Review the filled transaction before saving it.`
         : "I detected that you may be trying to log money activity, but I could not find a clear amount.";
   }
 
   if (intent === "overspending_help") {
     summary =
-      "You are asking for overspending recovery help. The safest move is to pause non-essential spending, protect bills first, and reduce flexible categories until the next income event.";
+      "You are asking for overspending recovery help. Pause non-essential spending, protect bills first, and reduce flexible categories until the next income event.";
   }
 
   const recommendation =
@@ -374,7 +443,9 @@ function buildLocalFallbackResponse(body: CoachRequestBody): SafeSpendCoachRespo
       categoryStatus,
       weeklyImpact:
         amount > 0
-          ? `Projected safe-to-spend after this activity: ${money(projectedSafeToSpend)}.`
+          ? `Projected safe-to-spend after this activity: ${money(
+              projectedSafeToSpend
+            )}.`
           : "No clear amount was detected, so weekly impact could not be calculated.",
       riskLevel,
       recommendation,
@@ -474,7 +545,9 @@ async function generateWithGemini(prompt: string, ai: GoogleGenAI) {
         lastError = error;
 
         console.error(
-          `SafeSpend Gemini API error on ${model}, attempt ${attempt + 1}:`,
+          `SafeSpend Gemini API error on ${model}, attempt ${
+            attempt + 1
+          }:`,
           error
         );
 
@@ -503,15 +576,23 @@ export async function POST(request: Request) {
 
     const ai = getGeminiClient();
 
-if (!ai) {
-  console.warn("Missing GEMINI_API_KEY. Returning local fallback response.");
-  return NextResponse.json(buildLocalFallbackResponse(body));
-}
+    if (!ai) {
+      console.warn("Missing GEMINI_API_KEY. Returning local fallback response.");
 
-const prompt = buildPrompt(body);
+      return NextResponse.json({
+        ...buildLocalFallbackResponse(body),
+        meta: {
+          model: "local_fallback",
+          fallback: true,
+          reason: "Missing GEMINI_API_KEY.",
+        },
+      });
+    }
 
-try {
-  const { parsed, model } = await generateWithGemini(prompt, ai);
+    const prompt = buildPrompt(body);
+
+    try {
+      const { parsed, model } = await generateWithGemini(prompt, ai);
 
       return NextResponse.json({
         ...parsed,
