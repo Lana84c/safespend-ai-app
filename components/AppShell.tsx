@@ -10,7 +10,7 @@ type AppShellProps = {
   children: React.ReactNode;
 };
 
-const navItems = [
+  const navItems = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Transactions", href: "/transactions" },
   { label: "Budgets", href: "/budgets" },
@@ -18,6 +18,7 @@ const navItems = [
   { label: "Coach", href: "/coach" },
   { label: "Reports", href: "/reports" },
   { label: "Settings", href: "/settings" },
+  { label: "Account", href: "/account" },
   { label: "Help", href: "/help" },
 ];
 

@@ -3,11 +3,17 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import AppShell from "@/components/AppShell";
 
 type UserSettings = {
   id?: string;
   user_id: string;
-  paycheck_frequency: "weekly" | "biweekly" | "semimonthly" | "monthly" | "irregular";
+  paycheck_frequency:
+    | "weekly"
+    | "biweekly"
+    | "semimonthly"
+    | "monthly"
+    | "irregular";
   weekly_reset_day:
     | "sunday"
     | "monday"
@@ -38,6 +44,21 @@ const defaultSettings = {
   top_priority: "avoid_overspending",
   notes: "",
 } as const;
+
+function money(value: number) {
+  return Number(value || 0).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+}
+
+function formatLabel(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -161,10 +182,8 @@ export default function SettingsPage() {
     setSaving(false);
   }
 
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/login");
-  }
+  const monthlyIncomeNumber = Number(monthlyIncomeTarget || 0);
+  const emergencyGoalNumber = Number(emergencyBufferGoal || 0);
 
   if (loading) {
     return (
@@ -177,68 +196,65 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#eefbff] via-white to-[#f7fbfd] px-6 py-8 text-[#102033]">
-      <section className="mx-auto max-w-5xl">
-        <header className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-4">
-            <img
-              src="/safespend-logo.png"
-              alt="SafeSpend AI logo"
-              className="h-14 w-14 rounded-2xl shadow-lg"
-            />
+    <AppShell
+      email={email}
+      title="Personalize your spending coach."
+      subtitle="Set your paycheck rhythm, weekly reset day, money goals, spending style, and top priority so SafeSpend AI can give more relevant guidance."
+    >
+      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard
+          label="Paycheck"
+          value={formatLabel(paycheckFrequency)}
+          helper="Income rhythm"
+        />
 
-            <div>
-              <h1 className="text-2xl font-black text-[#061b3d]">
-                SafeSpend Settings
-              </h1>
-              <p className="text-sm text-slate-500">{email}</p>
-            </div>
-          </div>
+        <SummaryCard
+          label="Weekly Reset"
+          value={formatLabel(weeklyResetDay)}
+          helper="Budget reset day"
+        />
 
-          <div className="flex flex-wrap gap-3">
-            <a
-              href="/dashboard"
-              className="rounded-full border border-slate-200 bg-white px-5 py-3 font-black text-[#061b3d] shadow-sm"
-            >
-              Dashboard
-            </a>
+        <SummaryCard
+          label="Income Target"
+          value={money(monthlyIncomeNumber)}
+          helper="Monthly goal"
+        />
 
-            <a
-              href="/budgets"
-              className="rounded-full border border-slate-200 bg-white px-5 py-3 font-black text-[#061b3d] shadow-sm"
-            >
-              Budgets
-            </a>
+        <SummaryCard
+          label="Emergency Buffer"
+          value={money(emergencyGoalNumber)}
+          helper="Protected cushion"
+          warning={emergencyGoalNumber > 0}
+        />
+      </section>
 
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-full border border-slate-200 bg-white px-5 py-3 font-black text-[#061b3d] shadow-sm"
-            >
-              Log Out
-            </button>
-          </div>
-        </header>
-
-        <section className="mb-6 rounded-[2rem] bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-8 text-white shadow-2xl">
-          <p className="mb-3 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-bold">
-            Personalize SafeSpend AI
-          </p>
-
-          <h2 className="max-w-3xl text-5xl font-black leading-[0.95] tracking-[-0.05em] md:text-6xl">
-            Make your spending coach fit your real life.
-          </h2>
-
-          <p className="mt-5 max-w-2xl text-white/80">
-            These settings help SafeSpend understand your paycheck rhythm,
-            spending style, reset day, and top money priority.
-          </p>
+      {status && (
+        <section className="mb-6 rounded-2xl bg-green-50 p-4 text-sm font-bold text-green-700">
+          {status}
         </section>
+      )}
 
+      {error && (
+        <section className="mb-6 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-600">
+          {error}
+        </section>
+      )}
+
+      <section className="grid gap-6 xl:grid-cols-[1fr_.85fr]">
         <form
           onSubmit={handleSaveSettings}
           className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl"
         >
+          <div className="mb-6">
+            <h3 className="text-2xl font-black text-[#061b3d]">
+              Coaching Preferences
+            </h3>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              SafeSpend uses these settings when giving purchase checks,
+              overspending recovery plans, and bill-aware guidance.
+            </p>
+          </div>
+
           <div className="grid gap-5 md:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm font-bold text-[#061b3d]">
@@ -297,9 +313,9 @@ export default function SettingsPage() {
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
                 placeholder="Example: 3200"
               />
-              <p className="mt-2 text-xs text-slate-500">
-                Used to help SafeSpend understand whether your current income is
-                on track.
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                Used to help SafeSpend understand whether current income is on
+                track.
               </p>
             </div>
 
@@ -318,9 +334,9 @@ export default function SettingsPage() {
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
                 placeholder="Example: 500"
               />
-              <p className="mt-2 text-xs text-slate-500">
-                This gives SafeSpend a buffer target before encouraging extra
-                discretionary spending.
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                Helps SafeSpend avoid encouraging extra discretionary spending
+                before your cushion is protected.
               </p>
             </div>
 
@@ -376,7 +392,7 @@ export default function SettingsPage() {
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               className="min-h-32 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-              placeholder="Example: I want to stop impulse shopping, keep grocery spending under control, and avoid using credit cards unless necessary."
+              placeholder="Example: I want to avoid impulse shopping, keep grocery spending under control, and avoid using credit cards unless necessary."
             />
           </div>
 
@@ -390,26 +406,162 @@ export default function SettingsPage() {
             </button>
 
             <a
-              href="/dashboard"
+              href="/coach"
               className="rounded-full border border-slate-200 bg-white px-6 py-3 font-black text-[#061b3d]"
             >
-              Back to Dashboard
+              Test in Coach
             </a>
           </div>
-
-          {status && (
-            <p className="mt-4 rounded-2xl bg-green-50 p-3 text-sm font-bold text-green-700">
-              {status}
-            </p>
-          )}
-
-          {error && (
-            <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-600">
-              {error}
-            </p>
-          )}
         </form>
+
+        <aside className="space-y-6">
+          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 className="text-2xl font-black text-[#061b3d]">
+              Current AI Profile
+            </h3>
+
+            <div className="mt-5 space-y-3">
+              <ProfileRow
+                label="Spending Style"
+                value={formatLabel(spendingStyle)}
+              />
+
+              <ProfileRow
+                label="Top Priority"
+                value={formatLabel(topPriority)}
+              />
+
+              <ProfileRow
+                label="Paycheck Frequency"
+                value={formatLabel(paycheckFrequency)}
+              />
+
+              <ProfileRow
+                label="Weekly Reset"
+                value={formatLabel(weeklyResetDay)}
+              />
+
+              <ProfileRow
+                label="Income Target"
+                value={money(monthlyIncomeNumber)}
+              />
+
+              <ProfileRow
+                label="Emergency Buffer"
+                value={money(emergencyGoalNumber)}
+              />
+            </div>
+          </section>
+
+          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 className="text-2xl font-black text-[#061b3d]">
+              How SafeSpend Uses This
+            </h3>
+
+            <div className="mt-5 space-y-3">
+              <InfoCard
+                title="Strict style"
+                description="SafeSpend warns earlier and is firmer about discretionary spending."
+              />
+
+              <InfoCard
+                title="Balanced style"
+                description="SafeSpend gives practical guidance and clear tradeoffs."
+              />
+
+              <InfoCard
+                title="Flexible style"
+                description="SafeSpend keeps advice lighter while still flagging risky spending."
+              />
+
+              <InfoCard
+                title="Top priority"
+                description="SafeSpend uses your main priority to shape purchase checks and recovery plans."
+              />
+            </div>
+          </section>
+
+          <section className="rounded-[2rem] border border-yellow-100 bg-yellow-50 p-6 shadow-xl">
+            <h3 className="text-xl font-black text-yellow-800">
+              Best Practice
+            </h3>
+
+            <p className="mt-2 text-sm leading-6 text-yellow-700">
+              Update these settings when your paycheck rhythm, money goals, or
+              spending behavior changes. The more accurate your settings are,
+              the better SafeSpend’s coaching becomes.
+            </p>
+          </section>
+        </aside>
       </section>
-    </main>
+    </AppShell>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  helper,
+  warning = false,
+}: {
+  label: string;
+  value: string;
+  helper: string;
+  warning?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-3xl border p-5 shadow-lg ${
+        warning ? "border-yellow-100 bg-yellow-50" : "border-slate-200 bg-white"
+      }`}
+    >
+      <p
+        className={`text-xs font-black uppercase tracking-widest ${
+          warning ? "text-yellow-600" : "text-slate-500"
+        }`}
+      >
+        {label}
+      </p>
+
+      <p
+        className={`mt-2 text-2xl font-black ${
+          warning ? "text-yellow-800" : "text-[#061b3d]"
+        }`}
+      >
+        {value}
+      </p>
+
+      <p
+        className={`mt-1 text-xs ${
+          warning ? "text-yellow-700" : "text-slate-500"
+        }`}
+      >
+        {helper}
+      </p>
+    </div>
+  );
+}
+
+function ProfileRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4">
+      <p className="text-sm font-bold text-slate-500">{label}</p>
+      <p className="text-right text-sm font-black text-[#061b3d]">{value}</p>
+    </div>
+  );
+}
+
+function InfoCard({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
+      <p className="font-black text-[#061b3d]">{title}</p>
+      <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
+    </div>
   );
 }
