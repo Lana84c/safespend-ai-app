@@ -2,63 +2,62 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
 import AppShell from "@/components/AppShell";
+import { supabase } from "@/lib/supabase/client";
 
 type UserSettings = {
-  id?: string;
   user_id: string;
-  paycheck_frequency:
-    | "weekly"
-    | "biweekly"
-    | "semimonthly"
-    | "monthly"
-    | "irregular";
-  weekly_reset_day:
-    | "sunday"
-    | "monday"
-    | "tuesday"
-    | "wednesday"
-    | "thursday"
-    | "friday"
-    | "saturday";
+  paycheck_frequency: string;
+  weekly_reset_day: string;
   monthly_income_target: number;
   emergency_buffer_goal: number;
-  spending_style: "strict" | "balanced" | "flexible";
-  top_priority:
-    | "avoid_overspending"
-    | "pay_down_debt"
-    | "save_more"
-    | "manage_bills"
-    | "control_shopping"
-    | "build_emergency_fund";
+  spending_style: string;
+  top_priority: string;
   notes: string | null;
 };
 
 const defaultSettings = {
   paycheck_frequency: "biweekly",
-  weekly_reset_day: "sunday",
+  weekly_reset_day: "Sunday",
   monthly_income_target: 0,
   emergency_buffer_goal: 0,
   spending_style: "balanced",
   top_priority: "avoid_overspending",
   notes: "",
-} as const;
+};
 
-function money(value: number) {
-  return Number(value || 0).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-  });
-}
+const paycheckFrequencyOptions = [
+  { label: "Weekly", value: "weekly" },
+  { label: "Biweekly", value: "biweekly" },
+  { label: "Twice Monthly", value: "twice_monthly" },
+  { label: "Monthly", value: "monthly" },
+  { label: "Irregular", value: "irregular" },
+];
 
-function formatLabel(value: string) {
-  return value
-    .replaceAll("_", " ")
-    .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
+const weeklyResetOptions = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+const spendingStyleOptions = [
+  { label: "Careful", value: "careful" },
+  { label: "Balanced", value: "balanced" },
+  { label: "Flexible", value: "flexible" },
+  { label: "Needs Guardrails", value: "needs_guardrails" },
+];
+
+const priorityOptions = [
+  { label: "Avoid Overspending", value: "avoid_overspending" },
+  { label: "Pay Down Debt", value: "pay_down_debt" },
+  { label: "Build Savings", value: "build_savings" },
+  { label: "Stay Current on Bills", value: "stay_current_on_bills" },
+  { label: "Prepare for Emergencies", value: "prepare_for_emergencies" },
+];
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -66,76 +65,92 @@ export default function SettingsPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState("");
 
-  const [paycheckFrequency, setPaycheckFrequency] = useState<
-    UserSettings["paycheck_frequency"]
-  >(defaultSettings.paycheck_frequency);
-
-  const [weeklyResetDay, setWeeklyResetDay] = useState<
-    UserSettings["weekly_reset_day"]
-  >(defaultSettings.weekly_reset_day);
-
+  const [paycheckFrequency, setPaycheckFrequency] = useState(
+    defaultSettings.paycheck_frequency
+  );
+  const [weeklyResetDay, setWeeklyResetDay] = useState(
+    defaultSettings.weekly_reset_day
+  );
   const [monthlyIncomeTarget, setMonthlyIncomeTarget] = useState("");
   const [emergencyBufferGoal, setEmergencyBufferGoal] = useState("");
-
-  const [spendingStyle, setSpendingStyle] = useState<
-    UserSettings["spending_style"]
-  >(defaultSettings.spending_style);
-
-  const [topPriority, setTopPriority] = useState<UserSettings["top_priority"]>(
-    defaultSettings.top_priority
+  const [spendingStyle, setSpendingStyle] = useState(
+    defaultSettings.spending_style
   );
-
+  const [topPriority, setTopPriority] = useState(defaultSettings.top_priority);
   const [notes, setNotes] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState("");
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    checkUserAndLoadSettings();
+    checkUser();
   }, []);
 
-  async function checkUserAndLoadSettings() {
+  async function checkUser() {
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
 
-    if (!user) {
+    if (error) {
+      console.error("Auth session error:", error.message);
+    }
+
+    if (!session?.user) {
       router.push("/login");
       return;
     }
 
-    setUserId(user.id);
-    setEmail(user.email || "");
+    setUserId(session.user.id);
+    setEmail(session.user.email || "");
 
+    await loadSettings(session.user.id);
+
+    setLoading(false);
+  }
+
+  async function loadSettings(currentUserId: string) {
     const { data, error } = await supabase
       .from("user_settings")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", currentUserId)
       .maybeSingle();
 
     if (error) {
       setError(error.message);
-      setLoading(false);
       return;
     }
 
-    if (data) {
-      setPaycheckFrequency(data.paycheck_frequency || "biweekly");
-      setWeeklyResetDay(data.weekly_reset_day || "sunday");
-      setMonthlyIncomeTarget(
-        data.monthly_income_target ? String(data.monthly_income_target) : ""
-      );
-      setEmergencyBufferGoal(
-        data.emergency_buffer_goal ? String(data.emergency_buffer_goal) : ""
-      );
-      setSpendingStyle(data.spending_style || "balanced");
-      setTopPriority(data.top_priority || "avoid_overspending");
-      setNotes(data.notes || "");
+    if (!data) {
+      setPaycheckFrequency(defaultSettings.paycheck_frequency);
+      setWeeklyResetDay(defaultSettings.weekly_reset_day);
+      setMonthlyIncomeTarget("");
+      setEmergencyBufferGoal("");
+      setSpendingStyle(defaultSettings.spending_style);
+      setTopPriority(defaultSettings.top_priority);
+      setNotes("");
+      return;
     }
 
-    setLoading(false);
+    const settings = data as UserSettings;
+
+    setPaycheckFrequency(settings.paycheck_frequency || "biweekly");
+    setWeeklyResetDay(settings.weekly_reset_day || "Sunday");
+    setMonthlyIncomeTarget(
+      settings.monthly_income_target
+        ? String(settings.monthly_income_target)
+        : ""
+    );
+    setEmergencyBufferGoal(
+      settings.emergency_buffer_goal
+        ? String(settings.emergency_buffer_goal)
+        : ""
+    );
+    setSpendingStyle(settings.spending_style || "balanced");
+    setTopPriority(settings.top_priority || "avoid_overspending");
+    setNotes(settings.notes || "");
   }
 
   async function handleSaveSettings(event: React.FormEvent<HTMLFormElement>) {
@@ -144,33 +159,32 @@ export default function SettingsPage() {
     if (!userId) return;
 
     setSaving(true);
-    setStatus("");
     setError("");
+    setMessage("");
 
-    const monthlyIncome = Number(monthlyIncomeTarget || 0);
-    const emergencyGoal = Number(emergencyBufferGoal || 0);
+    const monthlyTarget = Number(monthlyIncomeTarget || 0);
+    const bufferGoal = Number(emergencyBufferGoal || 0);
 
-    if (monthlyIncome < 0 || emergencyGoal < 0) {
-      setError("Money targets cannot be negative.");
+    if (monthlyTarget < 0 || bufferGoal < 0) {
+      setError("Money goals cannot be negative.");
       setSaving(false);
       return;
     }
 
-    const payload = {
-      user_id: userId,
-      paycheck_frequency: paycheckFrequency,
-      weekly_reset_day: weeklyResetDay,
-      monthly_income_target: monthlyIncome,
-      emergency_buffer_goal: emergencyGoal,
-      spending_style: spendingStyle,
-      top_priority: topPriority,
-      notes: notes.trim() || null,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { error } = await supabase
-      .from("user_settings")
-      .upsert(payload, { onConflict: "user_id" });
+    const { error } = await supabase.from("user_settings").upsert(
+      {
+        user_id: userId,
+        paycheck_frequency: paycheckFrequency,
+        weekly_reset_day: weeklyResetDay,
+        monthly_income_target: monthlyTarget,
+        emergency_buffer_goal: bufferGoal,
+        spending_style: spendingStyle,
+        top_priority: topPriority,
+        notes: notes || null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    );
 
     if (error) {
       setError(error.message);
@@ -178,16 +192,13 @@ export default function SettingsPage() {
       return;
     }
 
-    setStatus("Settings saved. SafeSpend AI can now use these preferences.");
+    setMessage("Settings saved successfully.");
     setSaving(false);
   }
 
-  const monthlyIncomeNumber = Number(monthlyIncomeTarget || 0);
-  const emergencyGoalNumber = Number(emergencyBufferGoal || 0);
-
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f4f8fb]">
+      <main className="flex min-h-screen items-center justify-center bg-[#f4f8fb] px-6">
         <p className="text-lg font-bold text-[#061b3d]">
           Loading settings...
         </p>
@@ -198,205 +209,197 @@ export default function SettingsPage() {
   return (
     <AppShell
       email={email}
-      title="Personalize your spending coach."
-      subtitle="Set your paycheck rhythm, weekly reset day, money goals, spending style, and top priority so SafeSpend AI can give more relevant guidance."
+      title="Settings"
+      subtitle="Manage your SafeSpend profile, spending preferences, notifications, and account details."
     >
-      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          label="Paycheck"
-          value={formatLabel(paycheckFrequency)}
-          helper="Income rhythm"
-        />
+      <section className="mb-6 rounded-[2rem] bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-8 text-white shadow-2xl">
+        <div className="grid gap-6 md:grid-cols-[1.2fr_.8fr] md:items-center">
+          <div>
+            <p className="mb-3 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-bold">
+              Personalization
+            </p>
 
-        <SummaryCard
-          label="Weekly Reset"
-          value={formatLabel(weeklyResetDay)}
-          helper="Budget reset day"
-        />
+            <h2 className="text-5xl font-black leading-[0.95] tracking-[-0.05em] md:text-6xl">
+              Make SafeSpend fit your money life.
+            </h2>
 
-        <SummaryCard
-          label="Income Target"
-          value={money(monthlyIncomeNumber)}
-          helper="Monthly goal"
-        />
-
-        <SummaryCard
-          label="Emergency Buffer"
-          value={money(emergencyGoalNumber)}
-          helper="Protected cushion"
-          warning={emergencyGoalNumber > 0}
-        />
-      </section>
-
-      {status && (
-        <section className="mb-6 rounded-2xl bg-green-50 p-4 text-sm font-bold text-green-700">
-          {status}
-        </section>
-      )}
-
-      {error && (
-        <section className="mb-6 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-600">
-          {error}
-        </section>
-      )}
-
-      <section className="grid gap-6 xl:grid-cols-[1fr_.85fr]">
-        <form
-          onSubmit={handleSaveSettings}
-          className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl"
-        >
-          <div className="mb-6">
-            <h3 className="text-2xl font-black text-[#061b3d]">
-              Coaching Preferences
-            </h3>
-            <p className="mt-1 text-sm leading-6 text-slate-500">
-              SafeSpend uses these settings when giving purchase checks,
-              overspending recovery plans, and bill-aware guidance.
+            <p className="mt-5 max-w-2xl text-white/80">
+              Your settings help SafeSpend understand your paycheck timing,
+              weekly reset rhythm, spending style, and financial priorities.
             </p>
           </div>
 
+          <div className="rounded-3xl border border-white/20 bg-white/15 p-6 backdrop-blur">
+            <p className="text-sm font-black uppercase tracking-widest text-white/70">
+              Active Account
+            </p>
+
+            <p className="mt-3 break-words text-2xl font-black">{email}</p>
+
+            <p className="mt-4 inline-flex rounded-full bg-white/15 px-4 py-2 text-sm font-bold">
+              Settings sync with your SafeSpend coach
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="mb-6 grid gap-4 md:grid-cols-3">
+        <QuickLinkCard
+          title="Notification Settings"
+          description="Choose which alerts and reminders SafeSpend should use."
+          href="/settings/notifications"
+          action="Manage Notifications"
+        />
+
+        <QuickLinkCard
+          title="Billing"
+          description="View your plan, upgrade, or manage your subscription."
+          href="/billing"
+          action="Open Billing"
+        />
+
+        <QuickLinkCard
+          title="Account"
+          description="Review account information and profile details."
+          href="/account"
+          action="Open Account"
+        />
+      </section>
+
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+        <div className="mb-6">
+          <h3 className="text-2xl font-black text-[#061b3d]">
+            Spending Preferences
+          </h3>
+
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            These preferences improve how SafeSpend calculates guidance,
+            explains risk, and frames recommendations.
+          </p>
+        </div>
+
+        <form onSubmit={handleSaveSettings} className="space-y-5">
           <div className="grid gap-5 md:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-                Paycheck Frequency
-              </label>
+            <FieldGroup label="Paycheck Frequency">
               <select
                 value={paycheckFrequency}
-                onChange={(event) =>
-                  setPaycheckFrequency(
-                    event.target.value as UserSettings["paycheck_frequency"]
-                  )
-                }
+                onChange={(event) => {
+                  setPaycheckFrequency(event.target.value);
+                  setMessage("");
+                  setError("");
+                }}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
               >
-                <option value="weekly">Weekly</option>
-                <option value="biweekly">Biweekly</option>
-                <option value="semimonthly">Twice a month</option>
-                <option value="monthly">Monthly</option>
-                <option value="irregular">Irregular / varies</option>
+                {paycheckFrequencyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
-            </div>
+            </FieldGroup>
 
-            <div>
-              <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-                Weekly Reset Day
-              </label>
+            <FieldGroup label="Weekly Reset Day">
               <select
                 value={weeklyResetDay}
-                onChange={(event) =>
-                  setWeeklyResetDay(
-                    event.target.value as UserSettings["weekly_reset_day"]
-                  )
-                }
+                onChange={(event) => {
+                  setWeeklyResetDay(event.target.value);
+                  setMessage("");
+                  setError("");
+                }}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
               >
-                <option value="sunday">Sunday</option>
-                <option value="monday">Monday</option>
-                <option value="tuesday">Tuesday</option>
-                <option value="wednesday">Wednesday</option>
-                <option value="thursday">Thursday</option>
-                <option value="friday">Friday</option>
-                <option value="saturday">Saturday</option>
+                {weeklyResetOptions.map((day) => (
+                  <option key={day} value={day}>
+                    {day}
+                  </option>
+                ))}
               </select>
-            </div>
+            </FieldGroup>
 
-            <div>
-              <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-                Monthly Income Target
-              </label>
+            <FieldGroup label="Monthly Income Target">
               <input
                 type="number"
                 min="0"
                 step="0.01"
                 value={monthlyIncomeTarget}
-                onChange={(event) => setMonthlyIncomeTarget(event.target.value)}
+                onChange={(event) => {
+                  setMonthlyIncomeTarget(event.target.value);
+                  setMessage("");
+                  setError("");
+                }}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-                placeholder="Example: 3200"
+                placeholder="Example: 3500"
               />
-              <p className="mt-2 text-xs leading-5 text-slate-500">
-                Used to help SafeSpend understand whether current income is on
-                track.
-              </p>
-            </div>
+            </FieldGroup>
 
-            <div>
-              <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-                Emergency Buffer Goal
-              </label>
+            <FieldGroup label="Emergency Buffer Goal">
               <input
                 type="number"
                 min="0"
                 step="0.01"
                 value={emergencyBufferGoal}
-                onChange={(event) =>
-                  setEmergencyBufferGoal(event.target.value)
-                }
+                onChange={(event) => {
+                  setEmergencyBufferGoal(event.target.value);
+                  setMessage("");
+                  setError("");
+                }}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
                 placeholder="Example: 500"
               />
-              <p className="mt-2 text-xs leading-5 text-slate-500">
-                Helps SafeSpend avoid encouraging extra discretionary spending
-                before your cushion is protected.
-              </p>
-            </div>
+            </FieldGroup>
 
-            <div>
-              <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-                Spending Style
-              </label>
+            <FieldGroup label="Spending Style">
               <select
                 value={spendingStyle}
-                onChange={(event) =>
-                  setSpendingStyle(
-                    event.target.value as UserSettings["spending_style"]
-                  )
-                }
+                onChange={(event) => {
+                  setSpendingStyle(event.target.value);
+                  setMessage("");
+                  setError("");
+                }}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
               >
-                <option value="strict">Strict — warn me early</option>
-                <option value="balanced">Balanced — practical guidance</option>
-                <option value="flexible">Flexible — lighter coaching</option>
+                {spendingStyleOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
-            </div>
+            </FieldGroup>
 
-            <div>
-              <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-                Top Money Priority
-              </label>
+            <FieldGroup label="Top Priority">
               <select
                 value={topPriority}
-                onChange={(event) =>
-                  setTopPriority(
-                    event.target.value as UserSettings["top_priority"]
-                  )
-                }
+                onChange={(event) => {
+                  setTopPriority(event.target.value);
+                  setMessage("");
+                  setError("");
+                }}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
               >
-                <option value="avoid_overspending">Avoid overspending</option>
-                <option value="pay_down_debt">Pay down debt</option>
-                <option value="save_more">Save more</option>
-                <option value="manage_bills">Manage bills</option>
-                <option value="control_shopping">Control shopping</option>
-                <option value="build_emergency_fund">
-                  Build emergency fund
-                </option>
+                {priorityOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
-            </div>
+            </FieldGroup>
           </div>
 
-          <div className="mt-5">
-            <label className="mb-2 block text-sm font-bold text-[#061b3d]">
-              Notes for SafeSpend AI
-            </label>
+          <FieldGroup label="Notes for SafeSpend">
             <textarea
               value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              className="min-h-32 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
-              placeholder="Example: I want to avoid impulse shopping, keep grocery spending under control, and avoid using credit cards unless necessary."
+              onChange={(event) => {
+                setNotes(event.target.value);
+                setMessage("");
+                setError("");
+              }}
+              rows={5}
+              className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+              placeholder="Example: I am trying to reduce food delivery, avoid impulse shopping, and keep $200 available before payday."
             />
-          </div>
+          </FieldGroup>
 
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="submit"
               disabled={saving}
@@ -406,162 +409,73 @@ export default function SettingsPage() {
             </button>
 
             <a
-              href="/coach"
-              className="rounded-full border border-slate-200 bg-white px-6 py-3 font-black text-[#061b3d]"
+              href="/dashboard"
+              className="rounded-full border border-slate-200 bg-white px-6 py-3 font-black text-[#061b3d] shadow-sm"
             >
-              Test in Coach
+              Back to Dashboard
             </a>
+
+            {message && (
+              <p className="rounded-2xl bg-green-50 px-4 py-3 text-sm font-bold text-green-700">
+                {message}
+              </p>
+            )}
+
+            {error && (
+              <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600">
+                {error}
+              </p>
+            )}
           </div>
         </form>
-
-        <aside className="space-y-6">
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-            <h3 className="text-2xl font-black text-[#061b3d]">
-              Current AI Profile
-            </h3>
-
-            <div className="mt-5 space-y-3">
-              <ProfileRow
-                label="Spending Style"
-                value={formatLabel(spendingStyle)}
-              />
-
-              <ProfileRow
-                label="Top Priority"
-                value={formatLabel(topPriority)}
-              />
-
-              <ProfileRow
-                label="Paycheck Frequency"
-                value={formatLabel(paycheckFrequency)}
-              />
-
-              <ProfileRow
-                label="Weekly Reset"
-                value={formatLabel(weeklyResetDay)}
-              />
-
-              <ProfileRow
-                label="Income Target"
-                value={money(monthlyIncomeNumber)}
-              />
-
-              <ProfileRow
-                label="Emergency Buffer"
-                value={money(emergencyGoalNumber)}
-              />
-            </div>
-          </section>
-
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-            <h3 className="text-2xl font-black text-[#061b3d]">
-              How SafeSpend Uses This
-            </h3>
-
-            <div className="mt-5 space-y-3">
-              <InfoCard
-                title="Strict style"
-                description="SafeSpend warns earlier and is firmer about discretionary spending."
-              />
-
-              <InfoCard
-                title="Balanced style"
-                description="SafeSpend gives practical guidance and clear tradeoffs."
-              />
-
-              <InfoCard
-                title="Flexible style"
-                description="SafeSpend keeps advice lighter while still flagging risky spending."
-              />
-
-              <InfoCard
-                title="Top priority"
-                description="SafeSpend uses your main priority to shape purchase checks and recovery plans."
-              />
-            </div>
-          </section>
-
-          <section className="rounded-[2rem] border border-yellow-100 bg-yellow-50 p-6 shadow-xl">
-            <h3 className="text-xl font-black text-yellow-800">
-              Best Practice
-            </h3>
-
-            <p className="mt-2 text-sm leading-6 text-yellow-700">
-              Update these settings when your paycheck rhythm, money goals, or
-              spending behavior changes. The more accurate your settings are,
-              the better SafeSpend’s coaching becomes.
-            </p>
-          </section>
-        </aside>
       </section>
     </AppShell>
   );
 }
 
-function SummaryCard({
+function FieldGroup({
   label,
-  value,
-  helper,
-  warning = false,
+  children,
 }: {
   label: string;
-  value: string;
-  helper: string;
-  warning?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <div
-      className={`rounded-3xl border p-5 shadow-lg ${
-        warning ? "border-yellow-100 bg-yellow-50" : "border-slate-200 bg-white"
-      }`}
-    >
-      <p
-        className={`text-xs font-black uppercase tracking-widest ${
-          warning ? "text-yellow-600" : "text-slate-500"
-        }`}
-      >
+    <label className="block">
+      <span className="mb-2 block text-sm font-black text-[#061b3d]">
         {label}
-      </p>
+      </span>
 
-      <p
-        className={`mt-2 text-2xl font-black ${
-          warning ? "text-yellow-800" : "text-[#061b3d]"
-        }`}
-      >
-        {value}
-      </p>
-
-      <p
-        className={`mt-1 text-xs ${
-          warning ? "text-yellow-700" : "text-slate-500"
-        }`}
-      >
-        {helper}
-      </p>
-    </div>
+      {children}
+    </label>
   );
 }
 
-function ProfileRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4">
-      <p className="text-sm font-bold text-slate-500">{label}</p>
-      <p className="text-right text-sm font-black text-[#061b3d]">{value}</p>
-    </div>
-  );
-}
-
-function InfoCard({
+function QuickLinkCard({
   title,
   description,
+  href,
+  action,
 }: {
   title: string;
   description: string;
+  href: string;
+  action: string;
 }) {
   return (
-    <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
-      <p className="font-black text-[#061b3d]">{title}</p>
-      <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
-    </div>
+    <a
+      href={href}
+      className="rounded-3xl border border-slate-200 bg-white p-5 shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
+    >
+      <h3 className="text-xl font-black text-[#061b3d]">{title}</h3>
+
+      <p className="mt-2 min-h-[48px] text-sm leading-6 text-slate-500">
+        {description}
+      </p>
+
+      <p className="mt-4 inline-flex rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-4 py-2 text-sm font-black text-white">
+        {action}
+      </p>
+    </a>
   );
 }

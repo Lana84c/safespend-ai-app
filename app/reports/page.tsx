@@ -364,7 +364,9 @@ export default function ReportsPage() {
         category,
         spent,
         percent:
-          totals.spent > 0 ? Math.round((Number(spent) / totals.spent) * 100) : 0,
+          totals.spent > 0
+            ? Math.round((Number(spent) / totals.spent) * 100)
+            : 0,
       }))
       .sort((a, b) => b.spent - a.spent);
   }, [filteredTransactions, totals.spent]);
@@ -385,7 +387,9 @@ export default function ReportsPage() {
         merchant,
         spent,
         percent:
-          totals.spent > 0 ? Math.round((Number(spent) / totals.spent) * 100) : 0,
+          totals.spent > 0
+            ? Math.round((Number(spent) / totals.spent) * 100)
+            : 0,
       }))
       .sort((a, b) => b.spent - a.spent)
       .slice(0, 8);
@@ -447,128 +451,26 @@ export default function ReportsPage() {
   }, [upcomingBills]);
 
   const protectedSafeToSpend = totals.net - upcomingBillsTotal;
-  const proInsights = useMemo(() => {
-  const biggestCategory = spendingByCategory[0] || null;
-  const biggestMerchant = topMerchants[0] || null;
 
-  const overBudgetCategories = budgetPressure.filter(
-    (item) => item.status === "Over Budget"
-  );
+  const largestCategory = spendingByCategory[0] || null;
+  const largestMerchant = topMerchants[0] || null;
 
-  const closeBudgetCategories = budgetPressure.filter(
-    (item) => item.status === "Close"
-  );
+  const proFocus = useMemo(() => {
+    if (protectedSafeToSpend <= 0) {
+      return "Pause non-essential spending and cover upcoming bills first.";
+    }
 
-  const categoryConcentrationRisk =
-    biggestCategory && biggestCategory.percent >= 45;
+    if (budgetPressure.some((item) => item.status === "Over Budget")) {
+      return "Reduce spending in over-budget categories before adding new purchases.";
+    }
 
-  const merchantConcentrationRisk =
-    biggestMerchant && biggestMerchant.percent >= 35;
+    if (largestCategory) {
+      return `Watch ${largestCategory.category}, your largest spending category in this report view.`;
+    }
 
-  const billPressureRisk =
-    upcomingBillsTotal > 0 &&
-    upcomingBillsTotal >= Math.max(totals.income * 0.25, 300);
+    return "Keep logging transactions so Pro insights can detect stronger spending patterns.";
+  }, [protectedSafeToSpend, budgetPressure, largestCategory]);
 
-  const protectedSafeRisk =
-    protectedSafeToSpend <= 0
-      ? "Critical"
-      : protectedSafeToSpend < 100
-        ? "High"
-        : protectedSafeToSpend < 250
-          ? "Medium"
-          : "Low";
-
-  const insightLines: string[] = [];
-
-  if (biggestCategory) {
-    insightLines.push(
-      `${biggestCategory.category} is your largest spending category in this view at ${money(
-        biggestCategory.spent
-      )}, representing ${biggestCategory.percent}% of tracked spending.`
-    );
-  }
-
-  if (biggestMerchant) {
-    insightLines.push(
-      `${biggestMerchant.merchant} is your highest-spend merchant in this view at ${money(
-        biggestMerchant.spent
-      )}, representing ${biggestMerchant.percent}% of tracked spending.`
-    );
-  }
-
-  if (overBudgetCategories.length > 0) {
-    insightLines.push(
-      `${overBudgetCategories.length} budget category ${
-        overBudgetCategories.length === 1 ? "is" : "are"
-      } over limit and should be treated as a spending freeze zone.`
-    );
-  } else if (closeBudgetCategories.length > 0) {
-    insightLines.push(
-      `${closeBudgetCategories.length} budget category ${
-        closeBudgetCategories.length === 1 ? "is" : "are"
-      } close to the limit. Reduce flexible purchases in those areas first.`
-    );
-  }
-
-  if (billPressureRisk) {
-    insightLines.push(
-      `Upcoming bills total ${money(
-        upcomingBillsTotal
-      )}, which creates meaningful pressure against your current safe-to-spend number.`
-    );
-  }
-
-  if (protectedSafeToSpend <= 0) {
-    insightLines.push(
-      "Your protected safe-to-spend is below zero. Non-essential spending should pause until bills or income are reconciled."
-    );
-  }
-
-  if (insightLines.length === 0) {
-    insightLines.push(
-      "No major risk concentration detected in this view. Continue logging transactions, bills, and budgets for stronger insight quality."
-    );
-  }
-
-  const recommendedFocus =
-    protectedSafeToSpend <= 0
-      ? "Pause non-essential spending and cover upcoming bills first."
-      : overBudgetCategories.length > 0
-        ? `Cut back first in ${overBudgetCategories
-            .slice(0, 2)
-            .map((item) => item.category)
-            .join(" and ")}.`
-        : closeBudgetCategories.length > 0
-          ? `Watch ${closeBudgetCategories
-              .slice(0, 2)
-              .map((item) => item.category)
-              .join(" and ")} for the rest of this period.`
-          : biggestCategory
-            ? `Review ${biggestCategory.category} spending before making another flexible purchase.`
-            : "Keep logging activity so SafeSpend can identify stronger patterns.";
-
-  return {
-    biggestCategory,
-    biggestMerchant,
-    overBudgetCategories,
-    closeBudgetCategories,
-    categoryConcentrationRisk,
-    merchantConcentrationRisk,
-    billPressureRisk,
-    protectedSafeRisk,
-    insightLines,
-    recommendedFocus,
-  };
-}, [
-  spendingByCategory,
-  topMerchants,
-  budgetPressure,
-  upcomingBillsTotal,
-  totals.income,
-  protectedSafeToSpend,
-]);
-
-  
   const reportSummary = useMemo(() => {
     if (reportLimitReached) {
       return "Your monthly Plus report limit has been reached. Upgrade to Pro for unlimited reports, advanced reports, deeper insights, and priority future features.";
@@ -650,7 +552,9 @@ export default function ReportsPage() {
           />
 
           <MetricCard label="Income" value={money(totals.income)} helper="Money in" />
+
           <MetricCard label="Spent" value={money(totals.spent)} helper="Money out" />
+
           <MetricCard
             label="Protected Safe"
             value={money(protectedSafeToSpend)}
@@ -671,7 +575,8 @@ export default function ReportsPage() {
 
             <p className="mt-3 max-w-3xl text-sm leading-6 text-white/80">
               Upgrade to Pro for unlimited reports, advanced reports, deeper
-              insights, exports, higher AI coaching, and priority future features.
+              insights, exports, higher AI coaching, and priority future
+              features.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-3">
@@ -736,312 +641,271 @@ export default function ReportsPage() {
           <LockedReportPreview />
         ) : (
           <>
-            <section className="mb-6 grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
-	     {isProPlan && !reportLimitReached && (
-  <AdvancedProInsights insights={proInsights} />
-)}
-              <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-                <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <h3 className="text-2xl font-black text-[#061b3d]">
-                      Spending by Category
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Categories ranked by spending in this period.
-                    </p>
+            {isProPlan && (
+              <section className="mb-6 grid items-start gap-6 xl:grid-cols-[1fr_1fr]">
+                <section className="h-fit rounded-[2rem] border border-cyan-100 bg-gradient-to-br from-[#eefbff] via-white to-[#f4fff6] p-6 shadow-xl">
+                  <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="mb-3 inline-flex rounded-full bg-blue-100 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-blue-700">
+                        Pro Advanced Insights
+                      </p>
+
+                      <h3 className="text-3xl font-black tracking-[-0.04em] text-[#061b3d]">
+                        Deeper spending intelligence
+                      </h3>
+
+                      <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                        Pro insights highlight concentration risk, budget pressure,
+                        merchant patterns, bill pressure, and the next financial
+                        move to prioritize.
+                      </p>
+                    </div>
+
+                    <a
+                      href="/exports"
+                      className="rounded-full bg-gradient-to-r from-[#061b3d] via-[#0b4edb] to-[#00b7c7] px-6 py-4 text-center text-sm font-black text-white shadow-lg"
+                    >
+                      Open Exports
+                    </a>
                   </div>
 
-                  <a
-                    href="/budgets"
-                    className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-[#061b3d]"
-                  >
-                    Adjust Budgets
-                  </a>
-                </div>
+                  <div className="mb-6 grid gap-4 md:grid-cols-2">
+                    <ProInsightCard
+                      label="Largest Category"
+                      value={largestCategory?.category || "None"}
+                      helper={
+                        largestCategory
+                          ? `${money(largestCategory.spent)} · ${largestCategory.percent}% of spending`
+                          : "Add transactions to calculate"
+                      }
+                    />
 
-                {spendingByCategory.length === 0 ? (
-                  <EmptyState
-                    title="No spending categories yet"
-                    description="Add expense transactions to see category trends."
-                    href="/transactions"
-                    action="Add Transactions"
-                  />
-                ) : (
-                  <div className="space-y-4">
-                    {spendingByCategory.map((item) => (
-                      <ProgressRow
-                        key={item.category}
-                        label={item.category}
-                        value={money(item.spent)}
-                        percent={item.percent}
-                        danger={item.percent >= 50}
-                        helper={`${item.percent}% of total spending`}
-                      />
-                    ))}
+                    <ProInsightCard
+                      label="Largest Merchant"
+                      value={largestMerchant?.merchant || "None"}
+                      helper={
+                        largestMerchant
+                          ? `${money(largestMerchant.spent)} · ${largestMerchant.percent}% of spending`
+                          : "Add merchants to calculate"
+                      }
+                    />
+
+                    <ProInsightCard
+                      label="Budget Risk"
+                      value={`${budgetPressure.filter((item) => item.status === "Over Budget").length} Over`}
+                      helper="Based on current budget pressure"
+                      danger={budgetPressure.some(
+                        (item) => item.status === "Over Budget"
+                      )}
+                    />
+
+                    <ProInsightCard
+                      label="Protected Safe Risk"
+                      value={protectedSafeToSpend <= 0 ? "Critical" : totals.risk}
+                      helper="After upcoming bills"
+                      danger={protectedSafeToSpend <= 0}
+                    />
                   </div>
-                )}
-              </section>
 
-              <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-                <div className="mb-5">
-                  <h3 className="text-2xl font-black text-[#061b3d]">
-                    Top Merchants
-                  </h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Where your money went most often by total spend.
-                  </p>
-                </div>
+                  <div className="grid items-start gap-5 lg:grid-cols-[1.05fr_.95fr]">
+                    <section className="h-fit rounded-[2rem] border border-slate-200 bg-white p-5">
+                      <h4 className="mb-4 text-2xl font-black text-[#061b3d]">
+                        Pro analysis notes
+                      </h4>
 
-                {topMerchants.length === 0 ? (
-                  <EmptyState
-                    title="No merchant data yet"
-                    description="Add expenses with merchant names to see top spending places."
-                    href="/transactions"
-                    action="Add Transactions"
-                  />
-                ) : (
-                  <div className="space-y-3">
-                    {topMerchants.map((item) => (
-                      <div
-                        key={item.merchant}
-                        className="flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4"
-                      >
-                        <div>
-                          <p className="font-black text-[#061b3d]">
-                            {item.merchant}
-                          </p>
-                          <p className="text-sm text-slate-500">
-                            {item.percent}% of total spending
-                          </p>
-                        </div>
+                      <div className="space-y-3">
+                        {largestCategory ? (
+                          <AnalysisNote>
+                            <strong>{largestCategory.category}</strong> is your
+                            largest spending category in this view at{" "}
+                            <strong>{money(largestCategory.spent)}</strong>,
+                            representing{" "}
+                            <strong>{largestCategory.percent}%</strong> of tracked
+                            spending.
+                          </AnalysisNote>
+                        ) : (
+                          <AnalysisNote>
+                            Add category-based expenses to generate category risk
+                            notes.
+                          </AnalysisNote>
+                        )}
 
-                        <p className="font-black text-[#061b3d]">
-                          {money(item.spent)}
-                        </p>
+                        {largestMerchant ? (
+                          <AnalysisNote>
+                            <strong>{largestMerchant.merchant}</strong> is your
+                            highest-spend merchant in this view at{" "}
+                            <strong>{money(largestMerchant.spent)}</strong>,
+                            representing{" "}
+                            <strong>{largestMerchant.percent}%</strong> of tracked
+                            spending.
+                          </AnalysisNote>
+                        ) : (
+                          <AnalysisNote>
+                            Add merchant names to transactions to generate merchant
+                            concentration notes.
+                          </AnalysisNote>
+                        )}
+
+                        {budgetPressure.some(
+                          (item) => item.status === "Over Budget"
+                        ) ? (
+                          <AnalysisNote>
+                            At least one category is over limit. Review the budget
+                            pressure section and reduce spending in the highest-risk
+                            category first.
+                          </AnalysisNote>
+                        ) : (
+                          <AnalysisNote>
+                            No category is currently over limit in this selected
+                            report view.
+                          </AnalysisNote>
+                        )}
                       </div>
-                    ))}
+                    </section>
+
+                    <section className="h-fit rounded-[2rem] border border-cyan-100 bg-cyan-50/60 p-6">
+                      <p className="mb-4 inline-flex rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#061b3d]">
+                        Recommended Focus
+                      </p>
+
+                      <h4 className="text-3xl font-black leading-tight tracking-[-0.04em] text-[#061b3d]">
+                        {proFocus}
+                      </h4>
+
+                      <p className="mt-5 text-sm leading-6 text-slate-600">
+                        This is a Pro-level readout based on the current report
+                        view. It is designed to help users take action, not just
+                        look at numbers.
+                      </p>
+                    </section>
                   </div>
-                )}
+                </section>
+
+                <section className="h-fit rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+                  <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h3 className="text-3xl font-black tracking-[-0.04em] text-[#061b3d]">
+                        Spending by Category
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Categories ranked by spending in this period.
+                      </p>
+                    </div>
+
+                    <a
+                      href="/budgets"
+                      className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-[#061b3d]"
+                    >
+                      Adjust Budgets
+                    </a>
+                  </div>
+
+                  {spendingByCategory.length === 0 ? (
+                    <EmptyState
+                      title="No spending categories yet"
+                      description="Add expense transactions to see category trends."
+                      href="/transactions"
+                      action="Add Transactions"
+                    />
+                  ) : (
+                    <div className="grid gap-4 2xl:grid-cols-2">
+                      {spendingByCategory.map((item) => (
+                        <ProgressRow
+                          key={item.category}
+                          label={item.category}
+                          value={money(item.spent)}
+                          percent={item.percent}
+                          danger={item.percent >= 50}
+                          helper={`${item.percent}% of total spending`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
               </section>
-            </section>
-
-            <section className="mb-6 grid gap-6 xl:grid-cols-2">
-              <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-                <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <h3 className="text-2xl font-black text-[#061b3d]">
-                      Budget Pressure
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Spending compared to your weekly category limits.
-                    </p>
-                  </div>
-
-                  <a
-                    href="/budgets"
-                    className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
-                  >
-                    Manage Budgets
-                  </a>
-                </div>
-
-                {budgetPressure.length === 0 ? (
-                  <EmptyState
-                    title="No budget limits yet"
-                    description="Add budgets so SafeSpend can calculate category pressure."
-                    href="/budgets"
-                    action="Set Budgets"
-                  />
-                ) : (
-                  <div className="space-y-4">
-                    {budgetPressure.map((item) => (
-                      <ProgressRow
-                        key={item.category}
-                        label={item.category}
-                        value={`${money(item.spent)} of ${money(item.limit)}`}
-                        percent={Math.min(item.percentUsed, 100)}
-                        danger={item.status === "Over Budget"}
-                        warning={item.status === "Close"}
-                        helper={item.status}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-                <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <h3 className="text-2xl font-black text-[#061b3d]">
-                      Bills & Obligations
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Upcoming and overdue bills affecting safe-to-spend.
-                    </p>
-                  </div>
-
-                  <a
-                    href="/bills"
-                    className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
-                  >
-                    Manage Bills
-                  </a>
-                </div>
-
-                <div className="mb-5 grid gap-3 md:grid-cols-3">
-                  <MiniStat
-                    label="Due Soon"
-                    value={money(upcomingBillsTotal)}
-                    helper={`${upcomingBills.length} bills`}
-                  />
-                  <MiniStat
-                    label="Overdue"
-                    value={String(overdueBills.length)}
-                    helper="unpaid"
-                    danger={overdueBills.length > 0}
-                  />
-                  <MiniStat
-                    label="Protected Safe"
-                    value={money(protectedSafeToSpend)}
-                    helper="after bills"
-                    danger={protectedSafeToSpend <= 0}
-                  />
-                </div>
-
-                {upcomingBills.length === 0 && overdueBills.length === 0 ? (
-                  <EmptyState
-                    title="No bill pressure right now"
-                    description="Add upcoming bills so SafeSpend can protect that money."
-                    href="/bills"
-                    action="Add Bills"
-                  />
-                ) : (
-                  <div className="space-y-3">
-                    {[...overdueBills, ...upcomingBills]
-                      .slice(0, 7)
-                      .map((bill) => {
-                        const days = daysUntil(bill.due_date);
-                        const overdue = days < 0;
-
-                        return (
-                          <div
-                            key={bill.id}
-                            className={`rounded-2xl border p-4 ${
-                              overdue
-                                ? "border-red-100 bg-red-50"
-                                : "border-slate-100 bg-slate-50"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-4">
-                              <div>
-                                <p
-                                  className={`font-black ${
-                                    overdue ? "text-red-700" : "text-[#061b3d]"
-                                  }`}
-                                >
-                                  {bill.bill_name}
-                                </p>
-
-                                <p
-                                  className={`text-sm ${
-                                    overdue ? "text-red-600" : "text-slate-500"
-                                  }`}
-                                >
-                                  {overdue
-                                    ? `Overdue by ${Math.abs(days)} days`
-                                    : days === 0
-                                      ? "Due today"
-                                      : days === 1
-                                        ? "Due tomorrow"
-                                        : `Due in ${days} days`}{" "}
-                                  · {formatDate(bill.due_date)}
-                                  {bill.is_autopay ? " · Autopay" : ""}
-                                </p>
-                              </div>
-
-                              <p
-                                className={`font-black ${
-                                  overdue ? "text-red-700" : "text-[#061b3d]"
-                                }`}
-                              >
-                                {money(Number(bill.amount))}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                )}
-              </section>
-            </section>
-
-            {isProPlan && !reportLimitReached && (
-              <AdvancedProInsights insights={proInsights} />
             )}
 
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-              <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h3 className="text-2xl font-black text-[#061b3d]">
-                    Recent Activity
-                  </h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Latest transactions included in your selected report view.
-                  </p>
-                </div>
-
-                <a
-                  href="/transactions"
-                  className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
-                >
-                  Open Transactions
-                </a>
-              </div>
-
-              {filteredTransactions.length === 0 ? (
-                <EmptyState
-                  title="No activity yet"
-                  description="Add transactions to start generating reports."
-                  href="/transactions"
-                  action="Add Transaction"
-                />
-              ) : (
-                <div className="grid gap-3 md:grid-cols-2">
-                  {filteredTransactions.slice(0, 8).map((tx) => (
-                    <div
-                      key={tx.id}
-                      className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-black text-[#061b3d]">
-                            {tx.merchant || tx.category}
-                          </p>
-                          <p className="text-sm text-slate-500">
-                            {tx.type} · {tx.category} · {formatDate(tx.date)}
-                          </p>
-                          {tx.description && (
-                            <p className="mt-1 text-xs text-slate-400">
-                              {tx.description}
-                            </p>
-                          )}
-                        </div>
-
-                        <p
-                          className={`whitespace-nowrap font-black ${
-                            Number(tx.amount) < 0
-                              ? "text-red-500"
-                              : "text-green-600"
-                          }`}
-                        >
-                          {money(Number(tx.amount))}
-                        </p>
-                      </div>
+            {!isProPlan && (
+              <section className="mb-6 grid items-start gap-6 xl:grid-cols-[1.05fr_.95fr]">
+                <section className="h-fit rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+                  <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h3 className="text-2xl font-black text-[#061b3d]">
+                        Spending by Category
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Categories ranked by spending in this period.
+                      </p>
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
+
+                    <a
+                      href="/budgets"
+                      className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-[#061b3d]"
+                    >
+                      Adjust Budgets
+                    </a>
+                  </div>
+
+                  {spendingByCategory.length === 0 ? (
+                    <EmptyState
+                      title="No spending categories yet"
+                      description="Add expense transactions to see category trends."
+                      href="/transactions"
+                      action="Add Transactions"
+                    />
+                  ) : (
+                    <div className="grid gap-4 2xl:grid-cols-2">
+                      {spendingByCategory.map((item) => (
+                        <ProgressRow
+                          key={item.category}
+                          label={item.category}
+                          value={money(item.spent)}
+                          percent={item.percent}
+                          danger={item.percent >= 50}
+                          helper={`${item.percent}% of total spending`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <TopMerchantsCard topMerchants={topMerchants} />
+              </section>
+            )}
+
+            {isProPlan && (
+              <section className="mb-6 grid items-start gap-6 xl:grid-cols-2">
+                <TopMerchantsCard topMerchants={topMerchants} />
+
+                <BudgetPressureCard budgetPressure={budgetPressure} />
+              </section>
+            )}
+
+            {!isProPlan && (
+              <section className="mb-6 grid items-start gap-6 xl:grid-cols-2">
+                <BudgetPressureCard budgetPressure={budgetPressure} />
+
+                <BillsCard
+                  upcomingBills={upcomingBills}
+                  overdueBills={overdueBills}
+                  upcomingBillsTotal={upcomingBillsTotal}
+                  protectedSafeToSpend={protectedSafeToSpend}
+                />
+              </section>
+            )}
+
+            {isProPlan && (
+              <section className="mb-6">
+                <BillsCard
+                  upcomingBills={upcomingBills}
+                  overdueBills={overdueBills}
+                  upcomingBillsTotal={upcomingBillsTotal}
+                  protectedSafeToSpend={protectedSafeToSpend}
+                />
+              </section>
+            )}
+
+            <RecentActivityCard filteredTransactions={filteredTransactions} />
           </>
         )}
       </BillingGate>
@@ -1111,6 +975,50 @@ function MetricCard({
   );
 }
 
+function ProInsightCard({
+  label,
+  value,
+  helper,
+  danger = false,
+}: {
+  label: string;
+  value: string;
+  helper: string;
+  danger?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-3xl border p-5 shadow-md ${
+        danger ? "border-red-100 bg-red-50" : "border-yellow-100 bg-yellow-50"
+      }`}
+    >
+      <p
+        className={`text-xs font-black uppercase tracking-[0.18em] ${
+          danger ? "text-red-500" : "text-yellow-700"
+        }`}
+      >
+        {label}
+      </p>
+
+      <p
+        className={`mt-3 text-2xl font-black ${
+          danger ? "text-red-700" : "text-yellow-900"
+        }`}
+      >
+        {value}
+      </p>
+
+      <p
+        className={`mt-2 text-sm leading-6 ${
+          danger ? "text-red-600" : "text-yellow-800"
+        }`}
+      >
+        {helper}
+      </p>
+    </div>
+  );
+}
+
 function MiniStat({
   label,
   value,
@@ -1131,6 +1039,7 @@ function MiniStat({
       >
         {label}
       </p>
+
       <p
         className={`mt-1 text-lg font-black ${
           danger ? "text-red-700" : "text-[#061b3d]"
@@ -1138,10 +1047,35 @@ function MiniStat({
       >
         {value}
       </p>
+
       <p className={`mt-1 text-xs ${danger ? "text-red-600" : "text-slate-500"}`}>
         {helper}
       </p>
     </div>
+  );
+}
+
+function FilterButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-5 py-3 text-sm font-black ${
+        active
+          ? "bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] text-white shadow-lg"
+          : "border border-slate-200 bg-white text-[#061b3d]"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -1160,18 +1094,16 @@ function ProgressRow({
   danger?: boolean;
   warning?: boolean;
 }) {
-  const cleanPercent = Math.max(0, Math.min(100, Number(percent || 0)));
-
   return (
-    <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
-      <div className="mb-2 flex items-start justify-between gap-4">
+    <div className="rounded-3xl border border-slate-100 bg-slate-50 p-5">
+      <div className="mb-3 flex items-start justify-between gap-4">
         <div>
-          <p className="font-black text-[#061b3d]">{label}</p>
+          <p className="text-xl font-black text-[#061b3d]">{label}</p>
           <p className="text-sm text-slate-500">{value}</p>
         </div>
 
         <span
-          className={`rounded-full px-3 py-1 text-xs font-black ${
+          className={`rounded-full px-4 py-2 text-xs font-black ${
             danger
               ? "bg-red-100 text-red-600"
               : warning
@@ -1192,34 +1124,10 @@ function ProgressRow({
                 ? "bg-yellow-400"
                 : "bg-gradient-to-r from-[#00b7c7] to-[#5ce05c]"
           }`}
-          style={{ width: `${cleanPercent}%` }}
+          style={{ width: `${Math.min(percent, 100)}%` }}
         />
       </div>
     </div>
-  );
-}
-
-function FilterButton({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full px-5 py-3 font-black ${
-        active
-          ? "bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] text-white shadow-lg"
-          : "border border-slate-200 bg-white text-[#061b3d]"
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 
@@ -1235,10 +1143,10 @@ function EmptyState({
   action: string;
 }) {
   return (
-    <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+    <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
       <h4 className="text-xl font-black text-[#061b3d]">{title}</h4>
 
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
         {description}
       </p>
 
@@ -1252,281 +1160,329 @@ function EmptyState({
   );
 }
 
-function AdvancedProInsights({
-  insights,
-}: {
-  insights: {
-    biggestCategory: {
-      category: string;
-      spent: number;
-      percent: number;
-    } | null;
-    biggestMerchant: {
-      merchant: string;
-      spent: number;
-      percent: number;
-    } | null;
-    overBudgetCategories: {
-      category: string;
-      spent: number;
-      limit: number;
-      percentUsed: number;
-      status: string;
-    }[];
-    closeBudgetCategories: {
-      category: string;
-      spent: number;
-      limit: number;
-      percentUsed: number;
-      status: string;
-    }[];
-    categoryConcentrationRisk: boolean | null;
-    merchantConcentrationRisk: boolean | null;
-    billPressureRisk: boolean;
-    protectedSafeRisk: string;
-    insightLines: string[];
-    recommendedFocus: string;
-  };
-}) {
+function AnalysisNote({ children }: { children: React.ReactNode }) {
   return (
-    <section className="mb-6 rounded-[2rem] border border-blue-100 bg-gradient-to-br from-white via-blue-50 to-cyan-50 p-6 shadow-xl">
-      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="mb-2 inline-flex rounded-full bg-blue-100 px-4 py-2 text-xs font-black uppercase tracking-widest text-blue-700">
-            Pro Advanced Insights
-          </p>
-
-          <h3 className="text-3xl font-black tracking-[-0.04em] text-[#061b3d]">
-            Deeper spending intelligence
-          </h3>
-
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Pro insights highlight concentration risk, budget pressure, merchant
-            patterns, bill pressure, and the next financial move to prioritize.
-          </p>
-        </div>
-
-        <a
-          href="/exports"
-          className="rounded-full bg-gradient-to-r from-[#061b3d] via-[#0b4edb] to-[#00b7c7] px-5 py-3 text-sm font-black text-white shadow-lg"
-        >
-          Open Exports
-        </a>
-      </div>
-
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <ProInsightCard
-          label="Largest Category"
-          value={insights.biggestCategory?.category || "None yet"}
-          helper={
-            insights.biggestCategory
-              ? `${money(insights.biggestCategory.spent)} · ${insights.biggestCategory.percent}% of spending`
-              : "Add expenses to calculate"
-          }
-          warning={Boolean(insights.categoryConcentrationRisk)}
-        />
-
-        <ProInsightCard
-          label="Largest Merchant"
-          value={insights.biggestMerchant?.merchant || "None yet"}
-          helper={
-            insights.biggestMerchant
-              ? `${money(insights.biggestMerchant.spent)} · ${insights.biggestMerchant.percent}% of spending`
-              : "Add merchant names to calculate"
-          }
-          warning={Boolean(insights.merchantConcentrationRisk)}
-        />
-
-        <ProInsightCard
-          label="Budget Risk"
-          value={
-            insights.overBudgetCategories.length > 0
-              ? `${insights.overBudgetCategories.length} Over`
-              : insights.closeBudgetCategories.length > 0
-                ? `${insights.closeBudgetCategories.length} Close`
-                : "Stable"
-          }
-          helper="Based on current budget pressure"
-          danger={insights.overBudgetCategories.length > 0}
-          warning={
-            insights.overBudgetCategories.length === 0 &&
-            insights.closeBudgetCategories.length > 0
-          }
-        />
-
-        <ProInsightCard
-          label="Protected Safe Risk"
-          value={insights.protectedSafeRisk}
-          helper="After upcoming bills"
-          danger={insights.protectedSafeRisk === "Critical"}
-          warning={
-            insights.protectedSafeRisk === "High" ||
-            insights.protectedSafeRisk === "Medium"
-          }
-        />
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
-        <section className="rounded-[2rem] border border-white bg-white/80 p-5 shadow-sm">
-          <h4 className="text-xl font-black text-[#061b3d]">
-            Pro analysis notes
-          </h4>
-
-          <div className="mt-4 space-y-3">
-            {insights.insightLines.map((line) => (
-              <div
-                key={line}
-                className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
-              >
-                <p className="text-sm font-bold leading-6 text-slate-700">
-                  {line}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-[2rem] border border-cyan-100 bg-gradient-to-br from-[#eefbff] to-[#f4fff6] p-5 shadow-sm">
-          <p className="mb-2 inline-flex rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-widest text-[#061b3d]">
-            Recommended Focus
-          </p>
-
-          <h4 className="text-2xl font-black tracking-[-0.03em] text-[#061b3d]">
-            {insights.recommendedFocus}
-          </h4>
-
-          <p className="mt-4 text-sm leading-6 text-slate-600">
-            This is a Pro-level readout based on the current report view. It is
-            designed to help users take action, not just look at numbers.
-          </p>
-
-          <div className="mt-5 rounded-3xl bg-white/80 p-4">
-            <p className="text-xs font-black uppercase tracking-widest text-slate-500">
-              Coming next for Pro
-            </p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Monthly AI review, paycheck planning, debt payoff guidance, and
-              downloadable insight summaries.
-            </p>
-          </div>
-        </section>
-      </div>
-    </section>
-  );
-}
-
-function ProInsightCard({
-  label,
-  value,
-  helper,
-  danger = false,
-  warning = false,
-}: {
-  label: string;
-  value: string;
-  helper: string;
-  danger?: boolean;
-  warning?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-3xl border p-5 shadow-sm ${
-        danger
-          ? "border-red-100 bg-red-50"
-          : warning
-            ? "border-yellow-100 bg-yellow-50"
-            : "border-white bg-white/80"
-      }`}
-    >
-      <p
-        className={`text-xs font-black uppercase tracking-widest ${
-          danger
-            ? "text-red-500"
-            : warning
-              ? "text-yellow-600"
-              : "text-slate-500"
-        }`}
-      >
-        {label}
-      </p>
-
-      <p
-        className={`mt-2 text-xl font-black ${
-          danger
-            ? "text-red-700"
-            : warning
-              ? "text-yellow-800"
-              : "text-[#061b3d]"
-        }`}
-      >
-        {value}
-      </p>
-
-      <p
-        className={`mt-1 text-xs leading-5 ${
-          danger
-            ? "text-red-600"
-            : warning
-              ? "text-yellow-700"
-              : "text-slate-500"
-        }`}
-      >
-        {helper}
-      </p>
+    <div className="rounded-3xl border border-slate-100 bg-slate-50 p-5 text-sm font-bold leading-7 text-[#061b3d]">
+      {children}
     </div>
   );
 }
 
-
-
-function LockedReportPreview() {
+function TopMerchantsCard({
+  topMerchants,
+}: {
+  topMerchants: {
+    merchant: string;
+    spent: number;
+    percent: number;
+  }[];
+}) {
   return (
-    <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-      <div className="rounded-[2rem] bg-slate-50 p-6">
-        <p className="mb-2 inline-flex rounded-full bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-blue-700">
-          Pro Unlock
+    <section className="h-fit rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+      <div className="mb-5">
+        <h3 className="text-2xl font-black text-[#061b3d]">Top Merchants</h3>
+        <p className="mt-1 text-sm text-slate-500">
+          Where your money went most often by total spend.
         </p>
+      </div>
 
-        <h3 className="text-3xl font-black tracking-[-0.04em] text-[#061b3d]">
-          Unlimited reports are included with Pro.
-        </h3>
+      {topMerchants.length === 0 ? (
+        <EmptyState
+          title="No merchant data yet"
+          description="Add expenses with merchant names to see top spending places."
+          href="/transactions"
+          action="Add Transactions"
+        />
+      ) : (
+        <div className="space-y-3">
+          {topMerchants.map((item) => (
+            <div
+              key={item.merchant}
+              className="flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4"
+            >
+              <div>
+                <p className="font-black text-[#061b3d]">{item.merchant}</p>
+                <p className="text-sm text-slate-500">
+                  {item.percent}% of total spending
+                </p>
+              </div>
 
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-          Plus includes up to 20 spending reports per month. Pro is designed for
-          deeper analysis, unlimited reporting, exports, advanced reports, and
-          future planning tools.
-        </p>
+              <p className="font-black text-[#061b3d]">{money(item.spent)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
 
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
-          <div className="rounded-3xl bg-white p-5">
-            <p className="font-black text-[#061b3d]">Advanced Reports</p>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              More detailed filters, deeper comparisons, and premium analysis.
-            </p>
-          </div>
-
-          <div className="rounded-3xl bg-white p-5">
-            <p className="font-black text-[#061b3d]">Deeper Insights</p>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Identify patterns, spending pressure, and behavior trends.
-            </p>
-          </div>
-
-          <div className="rounded-3xl bg-white p-5">
-            <p className="font-black text-[#061b3d]">Future Exports</p>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Export-ready financial records and more advanced planning tools.
-            </p>
-          </div>
+function BudgetPressureCard({
+  budgetPressure,
+}: {
+  budgetPressure: {
+    category: string;
+    spent: number;
+    limit: number;
+    percentUsed: number;
+    status: string;
+  }[];
+}) {
+  return (
+    <section className="h-fit rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+      <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="text-2xl font-black text-[#061b3d]">Budget Pressure</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Spending compared to your weekly category limits.
+          </p>
         </div>
 
         <a
-          href="/billing"
-          className="mt-6 inline-flex rounded-full bg-gradient-to-r from-[#061b3d] via-[#0b4edb] to-[#00b7c7] px-6 py-3 text-sm font-black text-white shadow-lg"
+          href="/budgets"
+          className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
         >
-          Upgrade to Pro
+          Manage Budgets
         </a>
       </div>
+
+      {budgetPressure.length === 0 ? (
+        <EmptyState
+          title="No budget limits yet"
+          description="Add budgets so SafeSpend can calculate category pressure."
+          href="/budgets"
+          action="Set Budgets"
+        />
+      ) : (
+        <div className="grid gap-4 2xl:grid-cols-2">
+          {budgetPressure.map((item) => (
+            <ProgressRow
+              key={item.category}
+              label={item.category}
+              value={`${money(item.spent)} of ${money(item.limit)}`}
+              percent={Math.min(item.percentUsed, 100)}
+              danger={item.status === "Over Budget"}
+              warning={item.status === "Close"}
+              helper={item.status}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BillsCard({
+  upcomingBills,
+  overdueBills,
+  upcomingBillsTotal,
+  protectedSafeToSpend,
+}: {
+  upcomingBills: Bill[];
+  overdueBills: Bill[];
+  upcomingBillsTotal: number;
+  protectedSafeToSpend: number;
+}) {
+  return (
+    <section className="h-fit rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+      <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="text-2xl font-black text-[#061b3d]">
+            Bills & Obligations
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Upcoming and overdue bills affecting safe-to-spend.
+          </p>
+        </div>
+
+        <a
+          href="/bills"
+          className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
+        >
+          Manage Bills
+        </a>
+      </div>
+
+      <div className="mb-5 grid gap-3 md:grid-cols-3">
+        <MiniStat
+          label="Due Soon"
+          value={money(upcomingBillsTotal)}
+          helper={`${upcomingBills.length} bills`}
+        />
+
+        <MiniStat
+          label="Overdue"
+          value={String(overdueBills.length)}
+          helper="unpaid"
+          danger={overdueBills.length > 0}
+        />
+
+        <MiniStat
+          label="Protected Safe"
+          value={money(protectedSafeToSpend)}
+          helper="after bills"
+          danger={protectedSafeToSpend <= 0}
+        />
+      </div>
+
+      {upcomingBills.length === 0 && overdueBills.length === 0 ? (
+        <EmptyState
+          title="No bill pressure right now"
+          description="Add upcoming bills so SafeSpend can protect that money."
+          href="/bills"
+          action="Add Bills"
+        />
+      ) : (
+        <div className="grid gap-3 xl:grid-cols-2">
+          {[...overdueBills, ...upcomingBills].slice(0, 8).map((bill) => {
+            const days = daysUntil(bill.due_date);
+            const overdue = days < 0;
+
+            return (
+              <div
+                key={bill.id}
+                className={`rounded-2xl border p-4 ${
+                  overdue
+                    ? "border-red-100 bg-red-50"
+                    : "border-slate-100 bg-slate-50"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p
+                      className={`font-black ${
+                        overdue ? "text-red-700" : "text-[#061b3d]"
+                      }`}
+                    >
+                      {bill.bill_name}
+                    </p>
+
+                    <p
+                      className={`text-sm ${
+                        overdue ? "text-red-600" : "text-slate-500"
+                      }`}
+                    >
+                      {overdue
+                        ? `Overdue by ${Math.abs(days)} days`
+                        : days === 0
+                          ? "Due today"
+                          : days === 1
+                            ? "Due tomorrow"
+                            : `Due in ${days} days`}{" "}
+                      · {formatDate(bill.due_date)}
+                      {bill.is_autopay ? " · Autopay" : ""}
+                    </p>
+                  </div>
+
+                  <p
+                    className={`font-black ${
+                      overdue ? "text-red-700" : "text-[#061b3d]"
+                    }`}
+                  >
+                    {money(Number(bill.amount))}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RecentActivityCard({
+  filteredTransactions,
+}: {
+  filteredTransactions: Transaction[];
+}) {
+  return (
+    <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+      <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="text-2xl font-black text-[#061b3d]">Recent Activity</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Latest transactions included in your selected report view.
+          </p>
+        </div>
+
+        <a
+          href="/transactions"
+          className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
+        >
+          Open Transactions
+        </a>
+      </div>
+
+      {filteredTransactions.length === 0 ? (
+        <EmptyState
+          title="No activity yet"
+          description="Add transactions to start generating reports."
+          href="/transactions"
+          action="Add Transaction"
+        />
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {filteredTransactions.slice(0, 9).map((tx) => (
+            <div
+              key={tx.id}
+              className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-black text-[#061b3d]">
+                    {tx.merchant || tx.category}
+                  </p>
+
+                  <p className="text-sm text-slate-500">
+                    {tx.type} · {tx.category} · {formatDate(tx.date)}
+                  </p>
+
+                  {tx.description && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      {tx.description}
+                    </p>
+                  )}
+                </div>
+
+                <p
+                  className={`whitespace-nowrap font-black ${
+                    Number(tx.amount) < 0 ? "text-red-500" : "text-green-600"
+                  }`}
+                >
+                  {money(Number(tx.amount))}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function LockedReportPreview() {
+  return (
+    <section className="rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-xl">
+      <p className="mb-3 inline-flex rounded-full bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-blue-700">
+        Reports Locked
+      </p>
+
+      <h3 className="text-3xl font-black tracking-[-0.04em] text-[#061b3d]">
+        Upgrade to continue viewing reports.
+      </h3>
+
+      <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-500">
+        You have reached your current report allowance. Upgrade to Pro for
+        unlimited reporting, exports, advanced analysis, and future premium
+        financial insights.
+      </p>
+
+      <a
+        href="/billing"
+        className="mt-6 inline-flex rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-6 py-3 text-sm font-black text-white shadow-lg"
+      >
+        View Plans
+      </a>
     </section>
   );
 }

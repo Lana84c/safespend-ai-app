@@ -21,10 +21,19 @@ const navItems = [
   { label: "Coach", href: "/coach" },
   { label: "Reports", href: "/reports" },
   { label: "Exports", href: "/exports" },
+  { label: "Progress", href: "/progress" },
   { label: "Billing", href: "/billing" },
   { label: "Settings", href: "/settings" },
   { label: "Account", href: "/account" },
   { label: "Help", href: "/help" },
+  { label: "Blog", href: "/blog" },
+];
+
+const legalLinks = [
+  { label: "Privacy Policy", href: "/privacy" },
+  { label: "Terms of Service", href: "/terms" },
+  { label: "Disclaimer", href: "/disclaimer" },
+  { label: "Data Deletion", href: "/data-deletion" },
 ];
 
 export default function AppShell({
@@ -46,7 +55,7 @@ export default function AppShell({
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f8fb] px-3 pb-8 pt-3 text-[#061b3d] sm:px-6 sm:pb-10 sm:pt-4 lg:px-8">
-      <div className="mx-auto max-w-7xl">
+      <div className="mx-auto flex min-h-screen max-w-7xl flex-col">
         <header className="sticky top-3 z-50 mb-5 sm:top-4 sm:mb-7">
           <div className="rounded-[1.5rem] border border-white/70 bg-white/92 p-3 shadow-xl backdrop-blur-xl sm:rounded-[2rem] sm:p-4">
             <div className="flex items-center justify-between gap-3">
@@ -185,7 +194,57 @@ export default function AppShell({
           </div>
         </section>
 
-        {children}
+        <div className="flex-1">{children}</div>
+
+        <footer className="mt-10 rounded-[1.5rem] border border-slate-200 bg-white p-5 text-sm text-slate-500 shadow-lg sm:rounded-[2rem] sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-cyan-100">
+                  <Image
+                    src="/safespend-logo.png"
+                    alt="SafeSpend AI logo"
+                    width={96}
+                    height={96}
+                    className="h-full w-full scale-150 object-contain"
+                  />
+                </div>
+
+                <div>
+                  <p className="font-black text-[#061b3d]">SafeSpend AI</p>
+                  <p className="text-xs font-bold text-slate-400">
+                    Spending Coach
+                  </p>
+                </div>
+              </div>
+
+              <p className="mt-4 max-w-3xl leading-6">
+                SafeSpend AI is a spending-awareness and budgeting support tool.
+                It is not financial, legal, tax, investment, credit, or
+                professional advice. Always use your own judgment before making
+                financial decisions.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3 font-black text-[#061b3d] lg:justify-end">
+              {legalLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="rounded-full bg-slate-50 px-4 py-2 text-xs transition hover:bg-slate-100"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 border-t border-slate-100 pt-4">
+            <p className="text-xs leading-5 text-slate-400">
+              © {new Date().getFullYear()} SafeSpend AI. All rights reserved.
+            </p>
+          </div>
+        </footer>
       </div>
     </main>
   );

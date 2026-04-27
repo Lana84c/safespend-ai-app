@@ -33,7 +33,7 @@ export const PLAN_LIMITS: Record<PlanKey, UsageLimits> = {
     monthlyCoachRequests: 10,
     monthlyReports: 0,
 
-    canUseBills: false,
+    canUseBills: true,
     canUseReports: false,
     canUseProtectedSafeToSpend: false,
     canUseExports: false,
