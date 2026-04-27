@@ -19,6 +19,7 @@ const navItems = [
   { label: "Bills", href: "/bills" },
   { label: "Coach", href: "/coach" },
   { label: "Reports", href: "/reports" },
+  { label: "Exports", href: "/exports" },
   { label: "Billing", href: "/billing" },
   { label: "Settings", href: "/settings" },
   { label: "Account", href: "/account" },
