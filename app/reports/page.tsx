@@ -168,13 +168,7 @@ export default function ReportsPage() {
     if (reportLimitReached) return;
 
     recordReportView(userId);
-  }, [
-    loading,
-    userId,
-    reportRecorded,
-    effectivePlan,
-    reportLimitReached,
-  ]);
+  }, [loading, userId, reportRecorded, effectivePlan, reportLimitReached]);
 
   async function checkUser() {
     const {
@@ -454,6 +448,127 @@ export default function ReportsPage() {
 
   const protectedSafeToSpend = totals.net - upcomingBillsTotal;
 
+  const proInsights = useMemo(() => {
+    const biggestCategory = spendingByCategory[0] || null;
+    const biggestMerchant = topMerchants[0] || null;
+
+    const overBudgetCategories = budgetPressure.filter(
+      (item) => item.status === "Over Budget"
+    );
+
+    const closeBudgetCategories = budgetPressure.filter(
+      (item) => item.status === "Close"
+    );
+
+    const categoryConcentrationRisk =
+      biggestCategory && biggestCategory.percent >= 45;
+
+    const merchantConcentrationRisk =
+      biggestMerchant && biggestMerchant.percent >= 35;
+
+    const billPressureRisk =
+      upcomingBillsTotal > 0 &&
+      upcomingBillsTotal >= Math.max(totals.income * 0.25, 300);
+
+    const protectedSafeRisk =
+      protectedSafeToSpend <= 0
+        ? "Critical"
+        : protectedSafeToSpend < 100
+          ? "High"
+          : protectedSafeToSpend < 250
+            ? "Medium"
+            : "Low";
+
+    const insightLines: string[] = [];
+
+    if (biggestCategory) {
+      insightLines.push(
+        `${biggestCategory.category} is your largest spending category in this view at ${money(
+          biggestCategory.spent
+        )}, representing ${biggestCategory.percent}% of tracked spending.`
+      );
+    }
+
+    if (biggestMerchant) {
+      insightLines.push(
+        `${biggestMerchant.merchant} is your highest-spend merchant in this view at ${money(
+          biggestMerchant.spent
+        )}, representing ${biggestMerchant.percent}% of tracked spending.`
+      );
+    }
+
+    if (overBudgetCategories.length > 0) {
+      insightLines.push(
+        `${overBudgetCategories.length} budget category ${
+          overBudgetCategories.length === 1 ? "is" : "are"
+        } over limit and should be treated as a spending freeze zone.`
+      );
+    } else if (closeBudgetCategories.length > 0) {
+      insightLines.push(
+        `${closeBudgetCategories.length} budget category ${
+          closeBudgetCategories.length === 1 ? "is" : "are"
+        } close to the limit. Reduce flexible purchases in those areas first.`
+      );
+    }
+
+    if (billPressureRisk) {
+      insightLines.push(
+        `Upcoming bills total ${money(
+          upcomingBillsTotal
+        )}, which creates meaningful pressure against your current safe-to-spend number.`
+      );
+    }
+
+    if (protectedSafeToSpend <= 0) {
+      insightLines.push(
+        "Your protected safe-to-spend is below zero. Non-essential spending should pause until bills or income are reconciled."
+      );
+    }
+
+    if (insightLines.length === 0) {
+      insightLines.push(
+        "No major risk concentration detected in this view. Continue logging transactions, bills, and budgets for stronger insight quality."
+      );
+    }
+
+    const recommendedFocus =
+      protectedSafeToSpend <= 0
+        ? "Pause non-essential spending and cover upcoming bills first."
+        : overBudgetCategories.length > 0
+          ? `Cut back first in ${overBudgetCategories
+              .slice(0, 2)
+              .map((item) => item.category)
+              .join(" and ")}.`
+          : closeBudgetCategories.length > 0
+            ? `Watch ${closeBudgetCategories
+                .slice(0, 2)
+                .map((item) => item.category)
+                .join(" and ")} for the rest of this period.`
+            : biggestCategory
+              ? `Review ${biggestCategory.category} spending before making another flexible purchase.`
+              : "Keep logging activity so SafeSpend can identify stronger patterns.";
+
+    return {
+      biggestCategory,
+      biggestMerchant,
+      overBudgetCategories,
+      closeBudgetCategories,
+      categoryConcentrationRisk,
+      merchantConcentrationRisk,
+      billPressureRisk,
+      protectedSafeRisk,
+      insightLines,
+      recommendedFocus,
+    };
+  }, [
+    spendingByCategory,
+    topMerchants,
+    budgetPressure,
+    upcomingBillsTotal,
+    totals.income,
+    protectedSafeToSpend,
+  ]);
+
   const reportSummary = useMemo(() => {
     if (reportLimitReached) {
       return "Your monthly Plus report limit has been reached. Upgrade to Pro for unlimited reports, advanced reports, deeper insights, and priority future features.";
@@ -534,18 +649,8 @@ export default function ReportsPage() {
             danger={reportLimitReached}
           />
 
-          <MetricCard
-            label="Income"
-            value={money(totals.income)}
-            helper="Money in"
-          />
-
-          <MetricCard
-            label="Spent"
-            value={money(totals.spent)}
-            helper="Money out"
-          />
-
+          <MetricCard label="Income" value={money(totals.income)} helper="Money in" />
+          <MetricCard label="Spent" value={money(totals.spent)} helper="Money out" />
           <MetricCard
             label="Protected Safe"
             value={money(protectedSafeToSpend)}
@@ -566,8 +671,7 @@ export default function ReportsPage() {
 
             <p className="mt-3 max-w-3xl text-sm leading-6 text-white/80">
               Upgrade to Pro for unlimited reports, advanced reports, deeper
-              insights, exports, higher AI coaching, and priority future
-              features.
+              insights, exports, higher AI coaching, and priority future features.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-3">
@@ -868,6 +972,10 @@ export default function ReportsPage() {
               </section>
             </section>
 
+            {isProPlan && !reportLimitReached && (
+              <AdvancedProInsights insights={proInsights} />
+            )}
+
             <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
               <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -1137,6 +1245,231 @@ function EmptyState({
       >
         {action}
       </a>
+    </div>
+  );
+}
+
+function AdvancedProInsights({
+  insights,
+}: {
+  insights: {
+    biggestCategory: {
+      category: string;
+      spent: number;
+      percent: number;
+    } | null;
+    biggestMerchant: {
+      merchant: string;
+      spent: number;
+      percent: number;
+    } | null;
+    overBudgetCategories: {
+      category: string;
+      spent: number;
+      limit: number;
+      percentUsed: number;
+      status: string;
+    }[];
+    closeBudgetCategories: {
+      category: string;
+      spent: number;
+      limit: number;
+      percentUsed: number;
+      status: string;
+    }[];
+    categoryConcentrationRisk: boolean | null;
+    merchantConcentrationRisk: boolean | null;
+    billPressureRisk: boolean;
+    protectedSafeRisk: string;
+    insightLines: string[];
+    recommendedFocus: string;
+  };
+}) {
+  return (
+    <section className="mb-6 rounded-[2rem] border border-blue-100 bg-gradient-to-br from-white via-blue-50 to-cyan-50 p-6 shadow-xl">
+      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="mb-2 inline-flex rounded-full bg-blue-100 px-4 py-2 text-xs font-black uppercase tracking-widest text-blue-700">
+            Pro Advanced Insights
+          </p>
+
+          <h3 className="text-3xl font-black tracking-[-0.04em] text-[#061b3d]">
+            Deeper spending intelligence
+          </h3>
+
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Pro insights highlight concentration risk, budget pressure, merchant
+            patterns, bill pressure, and the next financial move to prioritize.
+          </p>
+        </div>
+
+        <a
+          href="/exports"
+          className="rounded-full bg-gradient-to-r from-[#061b3d] via-[#0b4edb] to-[#00b7c7] px-5 py-3 text-sm font-black text-white shadow-lg"
+        >
+          Open Exports
+        </a>
+      </div>
+
+      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <ProInsightCard
+          label="Largest Category"
+          value={insights.biggestCategory?.category || "None yet"}
+          helper={
+            insights.biggestCategory
+              ? `${money(insights.biggestCategory.spent)} · ${insights.biggestCategory.percent}% of spending`
+              : "Add expenses to calculate"
+          }
+          warning={Boolean(insights.categoryConcentrationRisk)}
+        />
+
+        <ProInsightCard
+          label="Largest Merchant"
+          value={insights.biggestMerchant?.merchant || "None yet"}
+          helper={
+            insights.biggestMerchant
+              ? `${money(insights.biggestMerchant.spent)} · ${insights.biggestMerchant.percent}% of spending`
+              : "Add merchant names to calculate"
+          }
+          warning={Boolean(insights.merchantConcentrationRisk)}
+        />
+
+        <ProInsightCard
+          label="Budget Risk"
+          value={
+            insights.overBudgetCategories.length > 0
+              ? `${insights.overBudgetCategories.length} Over`
+              : insights.closeBudgetCategories.length > 0
+                ? `${insights.closeBudgetCategories.length} Close`
+                : "Stable"
+          }
+          helper="Based on current budget pressure"
+          danger={insights.overBudgetCategories.length > 0}
+          warning={
+            insights.overBudgetCategories.length === 0 &&
+            insights.closeBudgetCategories.length > 0
+          }
+        />
+
+        <ProInsightCard
+          label="Protected Safe Risk"
+          value={insights.protectedSafeRisk}
+          helper="After upcoming bills"
+          danger={insights.protectedSafeRisk === "Critical"}
+          warning={
+            insights.protectedSafeRisk === "High" ||
+            insights.protectedSafeRisk === "Medium"
+          }
+        />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
+        <section className="rounded-[2rem] border border-white bg-white/80 p-5 shadow-sm">
+          <h4 className="text-xl font-black text-[#061b3d]">
+            Pro analysis notes
+          </h4>
+
+          <div className="mt-4 space-y-3">
+            {insights.insightLines.map((line) => (
+              <div
+                key={line}
+                className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+              >
+                <p className="text-sm font-bold leading-6 text-slate-700">
+                  {line}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[2rem] border border-cyan-100 bg-gradient-to-br from-[#eefbff] to-[#f4fff6] p-5 shadow-sm">
+          <p className="mb-2 inline-flex rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-widest text-[#061b3d]">
+            Recommended Focus
+          </p>
+
+          <h4 className="text-2xl font-black tracking-[-0.03em] text-[#061b3d]">
+            {insights.recommendedFocus}
+          </h4>
+
+          <p className="mt-4 text-sm leading-6 text-slate-600">
+            This is a Pro-level readout based on the current report view. It is
+            designed to help users take action, not just look at numbers.
+          </p>
+
+          <div className="mt-5 rounded-3xl bg-white/80 p-4">
+            <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+              Coming next for Pro
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Monthly AI review, paycheck planning, debt payoff guidance, and
+              downloadable insight summaries.
+            </p>
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function ProInsightCard({
+  label,
+  value,
+  helper,
+  danger = false,
+  warning = false,
+}: {
+  label: string;
+  value: string;
+  helper: string;
+  danger?: boolean;
+  warning?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-3xl border p-5 shadow-sm ${
+        danger
+          ? "border-red-100 bg-red-50"
+          : warning
+            ? "border-yellow-100 bg-yellow-50"
+            : "border-white bg-white/80"
+      }`}
+    >
+      <p
+        className={`text-xs font-black uppercase tracking-widest ${
+          danger
+            ? "text-red-500"
+            : warning
+              ? "text-yellow-600"
+              : "text-slate-500"
+        }`}
+      >
+        {label}
+      </p>
+
+      <p
+        className={`mt-2 text-xl font-black ${
+          danger
+            ? "text-red-700"
+            : warning
+              ? "text-yellow-800"
+              : "text-[#061b3d]"
+        }`}
+      >
+        {value}
+      </p>
+
+      <p
+        className={`mt-1 text-xs leading-5 ${
+          danger
+            ? "text-red-600"
+            : warning
+              ? "text-yellow-700"
+              : "text-slate-500"
+        }`}
+      >
+        {helper}
+      </p>
     </div>
   );
 }
