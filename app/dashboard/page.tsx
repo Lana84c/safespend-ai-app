@@ -27,6 +27,34 @@ type Budget = {
 
 type FilterRange = "week" | "month" | "all";
 
+type SafeSpendIntent =
+  | "log_transaction"
+  | "purchase_check"
+  | "overspending_help"
+  | "general_guidance";
+
+type SafeSpendCoachResponse = {
+  intent: SafeSpendIntent;
+  shouldAutofillTransaction: boolean;
+  transaction: {
+    date: string;
+    type: Transaction["type"];
+    category: string;
+    merchant: string;
+    description: string;
+    amount: number;
+  };
+  coach: {
+    summary: string;
+    safeToSpendImpact: string;
+    categoryStatus: string;
+    weeklyImpact: string;
+    riskLevel: string;
+    recommendation: string;
+    nextBestAction: string;
+  };
+};
+
 const categories = [
   "Income",
   "Groceries",
@@ -43,6 +71,13 @@ const categories = [
 
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
+}
+
+function formatIntentLabel(intent: SafeSpendIntent) {
+  return intent
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 export default function DashboardPage() {
@@ -73,6 +108,11 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const [aiMessage, setAiMessage] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResponse, setAiResponse] =
+    useState<SafeSpendCoachResponse | null>(null);
 
   useEffect(() => {
     checkUser();
@@ -157,6 +197,121 @@ export default function DashboardPage() {
     });
   }, [transactions, filterRange]);
 
+  const totals = useMemo(() => {
+    const totalIncome = filteredTransactions
+      .filter((tx) => Number(tx.amount) > 0)
+      .reduce((sum, tx) => sum + Number(tx.amount), 0);
+
+    const totalSpent = filteredTransactions
+      .filter((tx) => Number(tx.amount) < 0)
+      .reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0);
+
+    const safeToSpend = totalIncome - totalSpent;
+
+    const risk =
+      safeToSpend <= 0
+        ? "Critical"
+        : safeToSpend < 100
+          ? "High"
+          : safeToSpend < 250
+            ? "Medium"
+            : "Low";
+
+    return {
+      totalIncome,
+      totalSpent,
+      safeToSpend,
+      risk,
+    };
+  }, [filteredTransactions]);
+
+  const categoryPressure = useMemo(() => {
+    return budgets
+      .filter((budget) => Number(budget.weekly_limit) > 0)
+      .map((budget) => {
+        const spent = filteredTransactions
+          .filter(
+            (tx) => tx.category === budget.category && Number(tx.amount) < 0
+          )
+          .reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0);
+
+        const limit = Number(budget.weekly_limit || 0);
+        const percentUsed = limit > 0 ? Math.round((spent / limit) * 100) : 0;
+
+        const status =
+          percentUsed >= 100
+            ? "Over Budget"
+            : percentUsed >= 80
+              ? "Close"
+              : "OK";
+
+        return {
+          category: budget.category,
+          spent,
+          limit,
+          percentUsed,
+          status,
+        };
+      })
+      .sort((a, b) => b.percentUsed - a.percentUsed);
+  }, [budgets, filteredTransactions]);
+
+  async function handleSafeSpendCoach(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (!aiMessage.trim()) {
+      setError("Please enter a message for SafeSpend AI.");
+      return;
+    }
+
+    setAiLoading(true);
+    setError("");
+    setAiResponse(null);
+
+    try {
+      const response = await fetch("/api/safespend-coach", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: aiMessage,
+          safeToSpend: totals.safeToSpend,
+          totalIncome: totals.totalIncome,
+          totalSpent: totals.totalSpent,
+          filterRange,
+          categoryPressure,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "SafeSpend AI could not respond.");
+        setAiLoading(false);
+        return;
+      }
+
+      setAiResponse(data);
+
+      if (data.shouldAutofillTransaction && data.transaction) {
+        setTransactionDate(data.transaction.date || getTodayDate());
+        setType(data.transaction.type || "Expense");
+        setCategory(data.transaction.category || "Other");
+        setMerchant(data.transaction.merchant || "");
+        setDescription(data.transaction.description || "");
+        setAmount(String(data.transaction.amount || ""));
+      }
+
+      setAiLoading(false);
+    } catch {
+      setError("SafeSpend AI could not connect. Please try again.");
+      setAiLoading(false);
+    }
+  }
+
   async function handleAddTransaction(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -193,9 +348,13 @@ export default function DashboardPage() {
     }
 
     setTransactionDate(getTodayDate());
+    setType("Expense");
+    setCategory("Groceries");
     setMerchant("");
     setDescription("");
     setAmount("");
+    setAiMessage("");
+    setAiResponse(null);
 
     await loadTransactions(userId);
     setSaving(false);
@@ -292,65 +451,6 @@ export default function DashboardPage() {
     router.push("/login");
   }
 
-  const totals = useMemo(() => {
-    const totalIncome = filteredTransactions
-      .filter((tx) => Number(tx.amount) > 0)
-      .reduce((sum, tx) => sum + Number(tx.amount), 0);
-
-    const totalSpent = filteredTransactions
-      .filter((tx) => Number(tx.amount) < 0)
-      .reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0);
-
-    const safeToSpend = totalIncome - totalSpent;
-
-    const risk =
-      safeToSpend <= 0
-        ? "Critical"
-        : safeToSpend < 100
-          ? "High"
-          : safeToSpend < 250
-            ? "Medium"
-            : "Low";
-
-    return {
-      totalIncome,
-      totalSpent,
-      safeToSpend,
-      risk,
-    };
-  }, [filteredTransactions]);
-
-  const categoryPressure = useMemo(() => {
-    return budgets
-      .filter((budget) => Number(budget.weekly_limit) > 0)
-      .map((budget) => {
-        const spent = filteredTransactions
-          .filter(
-            (tx) => tx.category === budget.category && Number(tx.amount) < 0
-          )
-          .reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0);
-
-        const limit = Number(budget.weekly_limit || 0);
-        const percentUsed = limit > 0 ? Math.round((spent / limit) * 100) : 0;
-
-        const status =
-          percentUsed >= 100
-            ? "Over Budget"
-            : percentUsed >= 80
-              ? "Close"
-              : "OK";
-
-        return {
-          category: budget.category,
-          spent,
-          limit,
-          percentUsed,
-          status,
-        };
-      })
-      .sort((a, b) => b.percentUsed - a.percentUsed);
-  }, [budgets, filteredTransactions]);
-
   function money(value: number) {
     return value.toLocaleString("en-US", {
       style: "currency",
@@ -404,6 +504,7 @@ export default function DashboardPage() {
             </a>
 
             <button
+              type="button"
               onClick={handleLogout}
               className="rounded-full border border-slate-200 bg-white px-5 py-3 font-black text-[#061b3d] shadow-sm"
             >
@@ -574,6 +675,168 @@ export default function DashboardPage() {
           )}
         </section>
 
+        <section className="mb-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+          <div className="mb-5">
+            <p className="mb-2 inline-flex rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-cyan-700">
+              SafeSpend AI Coach
+            </p>
+
+            <h3 className="text-2xl font-black text-[#061b3d]">
+              Tell SafeSpend what happened.
+            </h3>
+
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              Log a transaction, check a purchase before buying, or ask for help
+              after overspending. SafeSpend will fill the form when it detects a
+              transaction.
+            </p>
+          </div>
+
+          <form
+            onSubmit={handleSafeSpendCoach}
+            className="grid gap-3 md:grid-cols-[1fr_auto]"
+          >
+            <input
+              value={aiMessage}
+              onChange={(event) => setAiMessage(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+              placeholder="Example: I spent 64 at Publix yesterday"
+            />
+
+            <button
+              type="submit"
+              disabled={aiLoading || !aiMessage.trim()}
+              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-6 py-3 font-black text-white shadow-lg disabled:opacity-60"
+            >
+              {aiLoading ? "Thinking..." : "Ask SafeSpend"}
+            </button>
+          </form>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[
+              "I spent 64 at Publix yesterday",
+              "I got paid 1200 today",
+              "Can I spend 150 on clothes?",
+              "I overspent by 80 this week",
+              "I paid 200 toward my credit card",
+            ].map((example) => (
+              <button
+                key={example}
+                type="button"
+                onClick={() => setAiMessage(example)}
+                className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-[#061b3d]"
+              >
+                {example}
+              </button>
+            ))}
+          </div>
+
+          {aiResponse && (
+            <div className="mt-5 grid gap-4 md:grid-cols-[.9fr_1.1fr]">
+              <div className="rounded-3xl border border-slate-100 bg-slate-50 p-5">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+                  Detected
+                </p>
+
+                <h4 className="mt-2 text-xl font-black text-[#061b3d]">
+                  {formatIntentLabel(aiResponse.intent)}
+                </h4>
+
+                <div className="mt-4 space-y-2 text-sm text-slate-600">
+                  <p>
+                    <strong>Type:</strong> {aiResponse.transaction.type}
+                  </p>
+                  <p>
+                    <strong>Category:</strong>{" "}
+                    {aiResponse.transaction.category}
+                  </p>
+                  <p>
+                    <strong>Merchant:</strong>{" "}
+                    {aiResponse.transaction.merchant}
+                  </p>
+                  <p>
+                    <strong>Amount:</strong>{" "}
+                    {money(aiResponse.transaction.amount)}
+                  </p>
+                  <p>
+                    <strong>Date:</strong> {aiResponse.transaction.date}
+                  </p>
+                </div>
+
+                {aiResponse.shouldAutofillTransaction ? (
+                  <p className="mt-4 rounded-2xl bg-green-50 p-3 text-sm font-bold text-green-700">
+                    Transaction form filled. Review it, then click Add
+                    Transaction.
+                  </p>
+                ) : (
+                  <p className="mt-4 rounded-2xl bg-yellow-50 p-3 text-sm font-bold text-yellow-700">
+                    This looks like guidance, not a transaction to save.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+                    Risk: {aiResponse.coach.riskLevel}
+                  </span>
+
+                  <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-700">
+                    Category: {aiResponse.coach.categoryStatus}
+                  </span>
+
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
+                    Impact: {aiResponse.coach.safeToSpendImpact}
+                  </span>
+                </div>
+
+                <h4 className="text-xl font-black text-[#061b3d]">
+                  SafeSpend Guidance
+                </h4>
+
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {aiResponse.coach.summary}
+                </p>
+
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+                      Weekly Impact
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                      {aiResponse.coach.weeklyImpact}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+                      Recommendation
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                      {aiResponse.coach.recommendation}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-gradient-to-r from-[#eefbff] to-[#f4fff6] p-4">
+                    <p className="text-xs font-black uppercase tracking-widest text-[#061b3d]">
+                      Next Best Action
+                    </p>
+                    <p className="mt-1 text-sm font-bold leading-6 text-[#061b3d]">
+                      {aiResponse.coach.nextBestAction}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-600">
+              {error}
+            </p>
+          )}
+        </section>
+
         <section className="grid gap-6 md:grid-cols-[.9fr_1.1fr]">
           <form
             onSubmit={handleAddTransaction}
@@ -668,12 +931,6 @@ export default function DashboardPage() {
             >
               {saving ? "Saving..." : "Add Transaction"}
             </button>
-
-            {error && (
-              <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-600">
-                {error}
-              </p>
-            )}
           </form>
 
           <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
