@@ -65,9 +65,17 @@ type SafeSpendCoachResponse = {
   };
 };
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || "",
-});
+function getGeminiClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    return null;
+  }
+
+  return new GoogleGenAI({
+    apiKey,
+  });
+}
 
 const GEMINI_MODEL_CHAIN = [
   process.env.GEMINI_MODEL_PRIMARY || "gemini-2.5-flash-lite",
@@ -440,7 +448,7 @@ Required JSON shape:
 `;
 }
 
-async function generateWithGemini(prompt: string) {
+async function generateWithGemini(prompt: string, ai: GoogleGenAI) {
   let lastError: any = null;
 
   for (const model of GEMINI_MODEL_CHAIN) {
@@ -493,15 +501,17 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      console.warn("Missing GEMINI_API_KEY. Returning local fallback response.");
-      return NextResponse.json(buildLocalFallbackResponse(body));
-    }
+    const ai = getGeminiClient();
 
-    const prompt = buildPrompt(body);
+if (!ai) {
+  console.warn("Missing GEMINI_API_KEY. Returning local fallback response.");
+  return NextResponse.json(buildLocalFallbackResponse(body));
+}
 
-    try {
-      const { parsed, model } = await generateWithGemini(prompt);
+const prompt = buildPrompt(body);
+
+try {
+  const { parsed, model } = await generateWithGemini(prompt, ai);
 
       return NextResponse.json({
         ...parsed,
