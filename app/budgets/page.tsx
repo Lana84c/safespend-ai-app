@@ -5,6 +5,23 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import AppShell from "@/components/AppShell";
 
+type PlanKey = "free" | "plus" | "pro";
+
+type BillingStatus =
+  | "free"
+  | "active"
+  | "trialing"
+  | "past_due"
+  | "canceled"
+  | "incomplete"
+  | "incomplete_expired"
+  | "unpaid";
+
+type BillingRecord = {
+  plan: PlanKey;
+  status: BillingStatus;
+};
+
 type Budget = {
   id: string;
   user_id: string;
@@ -25,6 +42,8 @@ type Transaction = {
   amount: number;
   created_at: string;
 };
+
+const FREE_BUDGET_LIMIT = 3;
 
 const categories = [
   "Groceries",
@@ -67,11 +86,28 @@ function getMonthStartDate() {
   return start;
 }
 
+function isPaidStatus(status?: string | null) {
+  return status === "active" || status === "trialing";
+}
+
+function getEffectivePlan(billing: BillingRecord | null): PlanKey {
+  if (!billing) return "free";
+  if (!isPaidStatus(billing.status)) return "free";
+  if (billing.plan === "pro") return "pro";
+  if (billing.plan === "plus") return "plus";
+  return "free";
+}
+
+function formatPlanLabel(plan: PlanKey) {
+  return plan.charAt(0).toUpperCase() + plan.slice(1);
+}
+
 export default function BudgetsPage() {
   const router = useRouter();
 
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState("");
+  const [billing, setBilling] = useState<BillingRecord | null>(null);
 
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -90,6 +126,11 @@ export default function BudgetsPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
+  const effectivePlan = getEffectivePlan(billing);
+  const isFreePlan = effectivePlan === "free";
+  const freeBudgetsRemaining = Math.max(FREE_BUDGET_LIMIT - budgets.length, 0);
+  const freeBudgetLimitReached = isFreePlan && budgets.length >= FREE_BUDGET_LIMIT;
+
   useEffect(() => {
     checkUser();
   }, []);
@@ -97,7 +138,14 @@ export default function BudgetsPage() {
   async function checkUser() {
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
+
+    if (userError) {
+      setError(userError.message);
+      setLoading(false);
+      return;
+    }
 
     if (!user) {
       router.push("/login");
@@ -107,9 +155,35 @@ export default function BudgetsPage() {
     setUserId(user.id);
     setEmail(user.email || "");
 
-    await Promise.all([loadBudgets(user.id), loadTransactions(user.id)]);
+    await Promise.all([
+      loadBilling(user.id),
+      loadBudgets(user.id),
+      loadTransactions(user.id),
+    ]);
 
     setLoading(false);
+  }
+
+  async function loadBilling(currentUserId: string) {
+    const { data, error } = await supabase
+      .from("user_billing")
+      .select("plan, status")
+      .eq("user_id", currentUserId)
+      .maybeSingle();
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setBilling(
+      data
+        ? (data as BillingRecord)
+        : {
+            plan: "free",
+            status: "free",
+          }
+    );
   }
 
   async function loadBudgets(currentUserId: string) {
@@ -141,6 +215,20 @@ export default function BudgetsPage() {
     }
 
     setTransactions((data || []) as Transaction[]);
+  }
+
+  async function recordBudgetUsage(currentUserId: string) {
+    const { error } = await supabase.from("usage_events").insert({
+      user_id: currentUserId,
+      event_type: "budget_created",
+      metadata: {
+        plan: effectivePlan,
+      },
+    });
+
+    if (error) {
+      console.warn("Unable to record budget usage event:", error.message);
+    }
   }
 
   const budgetSummary = useMemo(() => {
@@ -256,6 +344,14 @@ export default function BudgetsPage() {
     setError("");
     setStatus("");
 
+    if (freeBudgetLimitReached) {
+      setError(
+        `Free plan limit reached. You can create up to ${FREE_BUDGET_LIMIT} budgets on Free. Upgrade to Plus for unlimited budgets.`
+      );
+      setSaving(false);
+      return;
+    }
+
     const weekly = Number(weeklyLimit || 0);
     const monthly = Number(monthlyLimit || 0);
 
@@ -291,6 +387,8 @@ export default function BudgetsPage() {
       setSaving(false);
       return;
     }
+
+    await recordBudgetUsage(userId);
 
     setCategory("Groceries");
     setWeeklyLimit("");
@@ -416,7 +514,29 @@ export default function BudgetsPage() {
       title="Set your spending guardrails."
       subtitle="Create weekly and monthly category limits so SafeSpend can warn you before your spending gets uncomfortable."
     >
-      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <MetricCard
+          label="Plan"
+          value={formatPlanLabel(effectivePlan)}
+          helper={isFreePlan ? "3 budgets max" : "Unlimited budgets"}
+        />
+
+        <MetricCard
+          label="Budget Usage"
+          value={
+            isFreePlan
+              ? `${budgets.length}/${FREE_BUDGET_LIMIT}`
+              : `${budgets.length} active`
+          }
+          helper={
+            isFreePlan
+              ? `${freeBudgetsRemaining} budget slots left`
+              : "No budget limit"
+          }
+          warning={isFreePlan && freeBudgetsRemaining === 1}
+          danger={freeBudgetLimitReached}
+        />
+
         <MetricCard
           label="Weekly Budget"
           value={money(budgetSummary.totalWeeklyLimit)}
@@ -430,19 +550,45 @@ export default function BudgetsPage() {
         />
 
         <MetricCard
-          label="Over Budget"
+          label="Pressure"
           value={String(budgetSummary.overBudgetCount)}
-          helper="Categories over limit"
+          helper="Categories over budget"
           danger={budgetSummary.overBudgetCount > 0}
         />
-
-        <MetricCard
-          label="Close"
-          value={String(budgetSummary.closeCount)}
-          helper="Categories nearing limit"
-          warning={budgetSummary.closeCount > 0}
-        />
       </section>
+
+      {freeBudgetLimitReached && (
+        <section className="mb-6 rounded-[2rem] bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-6 text-white shadow-xl">
+          <p className="mb-2 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-widest">
+            Free Limit Reached
+          </p>
+
+          <h3 className="text-3xl font-black tracking-[-0.04em]">
+            You used all {FREE_BUDGET_LIMIT} free budget slots.
+          </h3>
+
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/80">
+            Upgrade to Plus for unlimited budgets, unlimited transactions, bills
+            tracking, protected safe-to-spend, reports, and more AI coaching.
+          </p>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <a
+              href="/billing"
+              className="rounded-full bg-white px-5 py-3 text-sm font-black text-[#061b3d]"
+            >
+              Upgrade to Plus
+            </a>
+
+            <a
+              href="/dashboard"
+              className="rounded-full border border-white/25 bg-white/10 px-5 py-3 text-sm font-black text-white"
+            >
+              Back to Dashboard
+            </a>
+          </div>
+        </section>
+      )}
 
       {error && (
         <section className="mb-6 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-600">
@@ -465,13 +611,35 @@ export default function BudgetsPage() {
             Add Budget
           </h3>
 
+          {isFreePlan && (
+            <div
+              className={`mb-5 rounded-3xl border p-4 ${
+                freeBudgetLimitReached
+                  ? "border-red-100 bg-red-50 text-red-700"
+                  : freeBudgetsRemaining === 1
+                    ? "border-yellow-100 bg-yellow-50 text-yellow-700"
+                    : "border-cyan-100 bg-cyan-50 text-cyan-700"
+              }`}
+            >
+              <p className="text-sm font-black">
+                Free usage: {budgets.length}/{FREE_BUDGET_LIMIT}
+              </p>
+              <p className="mt-1 text-sm leading-6">
+                {freeBudgetLimitReached
+                  ? "Upgrade to Plus to add more budget categories."
+                  : `${freeBudgetsRemaining} budget slots remaining.`}
+              </p>
+            </div>
+          )}
+
           <label className="mb-2 block text-sm font-bold text-[#061b3d]">
             Category
           </label>
           <select
             value={category}
             onChange={(event) => setCategory(event.target.value)}
-            className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+            disabled={freeBudgetLimitReached}
+            className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {categories.map((item) => (
               <option key={item} value={item}>
@@ -489,7 +657,8 @@ export default function BudgetsPage() {
             step="0.01"
             value={weeklyLimit}
             onChange={(event) => setWeeklyLimit(event.target.value)}
-            className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+            disabled={freeBudgetLimitReached}
+            className="mb-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
             placeholder="Example: 150"
           />
 
@@ -502,16 +671,21 @@ export default function BudgetsPage() {
             step="0.01"
             value={monthlyLimit}
             onChange={(event) => setMonthlyLimit(event.target.value)}
-            className="mb-5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100"
+            disabled={freeBudgetLimitReached}
+            className="mb-5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:ring-4 focus:ring-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
             placeholder="Example: 600"
           />
 
           <button
             type="submit"
-            disabled={saving}
-            className="w-full rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-6 py-3 font-black text-white shadow-lg disabled:opacity-60"
+            disabled={saving || freeBudgetLimitReached}
+            className="w-full rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-6 py-3 font-black text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving ? "Saving..." : "Add Budget"}
+            {saving
+              ? "Saving..."
+              : freeBudgetLimitReached
+                ? "Upgrade to Add More"
+                : "Add Budget"}
           </button>
 
           <div className="mt-5 rounded-3xl border border-slate-100 bg-slate-50 p-5">
@@ -537,10 +711,10 @@ export default function BudgetsPage() {
             </div>
 
             <a
-              href="/reports"
+              href="/billing"
               className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-[#061b3d]"
             >
-              View Reports
+              View Plan
             </a>
           </div>
 

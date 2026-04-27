@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import AppShell from "@/components/AppShell";
 
@@ -26,6 +26,76 @@ type BillingRecord = {
   updated_at: string;
 };
 
+type PlanKey = "free" | "plus" | "pro";
+
+const plans: {
+  key: PlanKey;
+  name: string;
+  price: string;
+  description: string;
+  features: string[];
+  cta: string;
+  highlighted?: boolean;
+  badge?: string;
+}[] = [
+  {
+    key: "free",
+    name: "Free",
+    price: "$0",
+    description: "For trying SafeSpend and building basic money awareness.",
+    cta: "Current Free Plan",
+    features: [
+      "100 transactions per month",
+      "3 budgets max",
+      "10 AI coach messages per month",
+      "Dashboard overview",
+      "Manual transaction tracking",
+      "Basic safe-to-spend view",
+      "Up to 10 bills tracked",
+      "No reports",
+      "No protected safe-to-spend",
+    ],
+  },
+  {
+    key: "plus",
+    name: "Plus",
+    price: "$7/mo",
+    description:
+      "Everything you need to stay on top of your money and reach your goals.",
+    cta: "Upgrade to Plus",
+    highlighted: true,
+    badge: "Recommended",
+    features: [
+      "Unlimited transactions",
+      "Unlimited budgets",
+      "Bills tracking — up to 50 bills",
+      "Protected safe-to-spend",
+      "Spending reports — up to 20/month",
+      "AI coaching — up to 100 messages/month",
+      "Cancel anytime",
+      "No hidden fees",
+    ],
+  },
+  {
+    key: "pro",
+    name: "Pro",
+    price: "$15/mo",
+    description: "The complete financial command center powered by AI.",
+    cta: "Upgrade to Pro",
+    badge: "Premium",
+    features: [
+      "Everything in Plus",
+      "Higher AI coach usage",
+      "Advanced reports",
+      "Custom filters and deeper analytics",
+      "Deeper spending insights",
+      "Priority future features",
+      "Future CSV exports",
+      "Future paycheck and debt payoff planning",
+    ],
+  },
+];
+
 function formatDate(value: string | null) {
   if (!value) return "Not available";
 
@@ -36,21 +106,46 @@ function formatDate(value: string | null) {
   });
 }
 
-function formatPlan(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+function formatLabel(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function isPaidStatus(status?: string | null) {
+  return status === "active" || status === "trialing";
 }
 
 export default function BillingPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#f4f8fb]">
+          <p className="text-lg font-bold text-[#061b3d]">
+            Loading billing...
+          </p>
+        </main>
+      }
+    >
+      <BillingPageContent />
+    </Suspense>
+  );
+}
+
+function BillingPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [billing, setBilling] = useState<BillingRecord | null>(null);
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
-  const [workingPlan, setWorkingPlan] = useState<"plus" | "pro" | "portal" | null>(
+  const [startingCheckout, setStartingCheckout] = useState<PlanKey | null>(
     null
   );
+  const [openingPortal, setOpeningPortal] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
 
@@ -58,85 +153,103 @@ export default function BillingPage() {
     checkUserAndLoadBilling();
   }, []);
 
+  useEffect(() => {
+    if (searchParams.get("success") === "true") {
+      setStatus(
+        "Checkout completed. Your plan may take a moment to update while Stripe confirms the subscription."
+      );
+    }
+
+    if (searchParams.get("canceled") === "true") {
+      setStatus("Checkout was canceled. No changes were made.");
+    }
+  }, [searchParams]);
+
   async function checkUserAndLoadBilling() {
     const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-    if (sessionError) {
-      setError(sessionError.message);
+    if (userError) {
+      setError(userError.message);
       setLoading(false);
       return;
     }
 
-    if (!session?.user) {
+    if (!user) {
       router.push("/login");
       return;
     }
 
-    setEmail(session.user.email || "");
-    setSessionToken(session.access_token);
+    setEmail(user.email || "");
 
-    await loadBilling(session.user.id);
+    const { data, error } = await supabase
+      .from("user_billing")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-    const params = new URLSearchParams(window.location.search);
-
-    if (params.get("success") === "true") {
-      setStatus(
-        "Checkout completed. Stripe may take a moment to update your plan. Refresh if it does not update right away."
-      );
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+      return;
     }
 
-    if (params.get("canceled") === "true") {
-      setStatus("Checkout was canceled. Your plan was not changed.");
+    if (data) {
+      setBilling(data as BillingRecord);
+    } else {
+      const { data: createdBilling, error: insertError } = await supabase
+        .from("user_billing")
+        .insert({
+          user_id: user.id,
+          plan: "free",
+          status: "free",
+          updated_at: new Date().toISOString(),
+        })
+        .select("*")
+        .single();
+
+      if (insertError) {
+        setError(insertError.message);
+        setLoading(false);
+        return;
+      }
+
+      setBilling(createdBilling as BillingRecord);
     }
 
     setLoading(false);
   }
 
-  async function loadBilling(userId: string) {
-    const { data, error } = await supabase
-      .from("user_billing")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+  async function getAccessToken() {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
 
-    if (error) {
-      setError(error.message);
-      return;
+    if (error || !session?.access_token) {
+      throw new Error("You must be logged in to manage billing.");
     }
 
-    setBilling((data || null) as BillingRecord | null);
+    return session.access_token;
   }
 
-  const currentPlan = billing?.plan || "free";
-  const currentStatus = billing?.status || "free";
+  async function handleCheckout(plan: PlanKey) {
+    if (plan === "free") return;
 
-  const hasPaidAccess = useMemo(() => {
-    return (
-      billing?.status === "active" ||
-      billing?.status === "trialing"
-    );
-  }, [billing]);
-
-  async function startCheckout(plan: "plus" | "pro") {
+    setStartingCheckout(plan);
     setError("");
     setStatus("");
-    setWorkingPlan(plan);
 
     try {
-      if (!sessionToken) {
-        setError("You must be logged in to upgrade.");
-        setWorkingPlan(null);
-        return;
-      }
+      const accessToken = await getAccessToken();
 
       const response = await fetch("/api/stripe/create-checkout-session", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${sessionToken}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ plan }),
       });
@@ -144,63 +257,74 @@ export default function BillingPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || "Could not start checkout.");
-        setWorkingPlan(null);
+        setError(data.error || "Unable to start checkout.");
+        setStartingCheckout(null);
         return;
       }
 
       if (!data.url) {
         setError("Stripe did not return a checkout URL.");
-        setWorkingPlan(null);
+        setStartingCheckout(null);
         return;
       }
 
       window.location.href = data.url;
-    } catch {
-      setError("Could not connect to Stripe Checkout.");
-      setWorkingPlan(null);
+    } catch (error: any) {
+      setError(error?.message || "Unable to start checkout.");
+      setStartingCheckout(null);
     }
   }
 
-  async function openCustomerPortal() {
+  async function handleCustomerPortal() {
+    setOpeningPortal(true);
     setError("");
     setStatus("");
-    setWorkingPlan("portal");
 
     try {
-      if (!sessionToken) {
-        setError("You must be logged in to manage billing.");
-        setWorkingPlan(null);
-        return;
-      }
+      const accessToken = await getAccessToken();
 
       const response = await fetch("/api/stripe/create-portal-session", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${sessionToken}`,
+          Authorization: `Bearer ${accessToken}`,
         },
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || "Could not open billing portal.");
-        setWorkingPlan(null);
+        setError(data.error || "Unable to open billing portal.");
+        setOpeningPortal(false);
         return;
       }
 
       if (!data.url) {
-        setError("Stripe did not return a portal URL.");
-        setWorkingPlan(null);
+        setError("Stripe did not return a billing portal URL.");
+        setOpeningPortal(false);
         return;
       }
 
       window.location.href = data.url;
-    } catch {
-      setError("Could not connect to Stripe Billing Portal.");
-      setWorkingPlan(null);
+    } catch (error: any) {
+      setError(error?.message || "Unable to open billing portal.");
+      setOpeningPortal(false);
     }
   }
+
+  const currentPlan = billing?.plan || "free";
+  const currentStatus = billing?.status || "free";
+  const hasPaidAccess = isPaidStatus(currentStatus) && currentPlan !== "free";
+
+  const billingSummary = useMemo(() => {
+    return {
+      plan: formatLabel(currentPlan),
+      status: formatLabel(currentStatus),
+      renews: billing?.current_period_end
+        ? formatDate(billing.current_period_end)
+        : "Not available",
+      canceling: billing?.cancel_at_period_end ? "Yes" : "No",
+    };
+  }, [billing, currentPlan, currentStatus]);
 
   if (loading) {
     return (
@@ -213,31 +337,38 @@ export default function BillingPage() {
   return (
     <AppShell
       email={email}
-      title="Choose your SafeSpend plan."
-      subtitle="Start free, then upgrade when you want bill-aware safe-to-spend, reports, and full AI coaching."
+      title="Choose the SafeSpend plan that fits your money goals."
+      subtitle="Start free, upgrade to Plus for full spending control, or choose Pro for advanced AI-powered insights."
     >
-      <section className="mb-6 grid gap-4 md:grid-cols-3">
+      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           label="Current Plan"
-          value={formatPlan(currentPlan)}
-          helper={`Status: ${currentStatus}`}
+          value={billingSummary.plan}
+          helper="Your active app tier"
         />
 
         <SummaryCard
-          label="Paid Access"
-          value={hasPaidAccess ? "Active" : "Not Active"}
-          helper={hasPaidAccess ? "Premium features available" : "Free access only"}
-          warning={!hasPaidAccess}
+          label="Billing Status"
+          value={billingSummary.status}
+          helper="Stripe subscription state"
+          warning={currentStatus === "past_due" || currentStatus === "unpaid"}
         />
 
         <SummaryCard
-          label="Period Ends"
-          value={formatDate(billing?.current_period_end || null)}
+          label="Current Period Ends"
+          value={billingSummary.renews}
           helper={
             billing?.cancel_at_period_end
-              ? "Cancels at period end"
-              : "Subscription renewal date"
+              ? "Plan will cancel after this date"
+              : "Next renewal/checkpoint"
           }
+        />
+
+        <SummaryCard
+          label="Canceling"
+          value={billingSummary.canceling}
+          helper="Managed in Stripe Portal"
+          warning={Boolean(billing?.cancel_at_period_end)}
         />
       </section>
 
@@ -253,118 +384,194 @@ export default function BillingPage() {
         </section>
       )}
 
-      <section className="mb-6 grid gap-6 xl:grid-cols-3">
-        <PlanCard
-          name="Free"
-          price="$0"
-          description="For basic spending awareness."
-          features={[
-            "Dashboard overview",
-            "Manual transactions",
-            "Basic budgets",
-            "Account access",
-          ]}
-          current={currentPlan === "free"}
-          buttonLabel="Current Plan"
-          disabled
-        />
+      <section className="mb-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="mb-2 inline-flex rounded-full bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-cyan-700">
+              Billing
+            </p>
 
-        <PlanCard
-          name="Plus"
-          price="$7/mo"
-          description="For bill-aware spending decisions."
-          features={[
-            "Everything in Free",
-            "Bills and upcoming obligations",
-            "Protected safe-to-spend",
-            "Reports",
-            "Full AI spending coach",
-          ]}
-          current={currentPlan === "plus" && hasPaidAccess}
-          buttonLabel={
-            workingPlan === "plus"
-              ? "Opening Checkout..."
-              : currentPlan === "plus" && hasPaidAccess
-                ? "Current Plan"
-                : "Upgrade to Plus"
-          }
-          disabled={workingPlan !== null || (currentPlan === "plus" && hasPaidAccess)}
-          onClick={() => startCheckout("plus")}
-          highlighted
-        />
+            <h3 className="text-2xl font-black text-[#061b3d]">
+              Current subscription
+            </h3>
 
-        <PlanCard
-          name="Pro"
-          price="$15/mo"
-          description="For deeper future features and advanced use."
-          features={[
-            "Everything in Plus",
-            "Advanced reports",
-            "Future exports",
-            "Future premium coaching",
-            "Priority feature access",
-          ]}
-          current={currentPlan === "pro" && hasPaidAccess}
-          buttonLabel={
-            workingPlan === "pro"
-              ? "Opening Checkout..."
-              : currentPlan === "pro" && hasPaidAccess
-                ? "Current Plan"
-                : "Upgrade to Pro"
-          }
-          disabled={workingPlan !== null || (currentPlan === "pro" && hasPaidAccess)}
-          onClick={() => startCheckout("pro")}
-        />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[.9fr_1.1fr]">
-        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-          <h3 className="text-2xl font-black text-[#061b3d]">
-            Manage Subscription
-          </h3>
-
-          <p className="mt-2 text-sm leading-6 text-slate-500">
-            Use Stripe’s secure customer portal to manage payment methods,
-            invoices, renewals, and cancellation.
-          </p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+              Your billing is handled securely through Stripe. Use the billing
+              portal to update payment methods, view invoices, or cancel a paid
+              subscription.
+            </p>
+          </div>
 
           <button
             type="button"
-            onClick={openCustomerPortal}
-            disabled={workingPlan !== null || !billing?.stripe_customer_id}
-            className="mt-5 rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-6 py-3 text-sm font-black text-white shadow-lg disabled:opacity-60"
+            onClick={handleCustomerPortal}
+            disabled={openingPortal || !billing?.stripe_customer_id}
+            className="rounded-full border border-slate-200 bg-slate-50 px-6 py-3 font-black text-[#061b3d] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {workingPlan === "portal" ? "Opening Portal..." : "Open Billing Portal"}
+            {openingPortal ? "Opening..." : "Manage Billing"}
           </button>
+        </div>
 
-          {!billing?.stripe_customer_id && (
-            <p className="mt-3 rounded-2xl bg-yellow-50 p-3 text-sm font-bold text-yellow-700">
-              You will get billing portal access after starting a paid
-              subscription.
-            </p>
-          )}
-        </section>
+        {!billing?.stripe_customer_id && (
+          <p className="mt-4 rounded-2xl bg-yellow-50 p-4 text-sm font-bold leading-6 text-yellow-700">
+            A Stripe customer has not been created yet. This happens
+            automatically when you start checkout.
+          </p>
+        )}
+      </section>
 
+      <section className="grid gap-6 xl:grid-cols-3">
+        {plans.map((plan) => {
+          const isCurrentPlan = currentPlan === plan.key;
+          const isPaidPlan = plan.key !== "free";
+          const isCurrentPaidPlan = isCurrentPlan && hasPaidAccess;
+          const canUpgrade =
+            isPaidPlan && (!isCurrentPlan || !isPaidStatus(currentStatus));
+
+          return (
+            <div
+              key={plan.key}
+              className={`relative rounded-[2rem] border p-6 shadow-xl ${
+                plan.highlighted
+                  ? "border-cyan-200 bg-gradient-to-br from-white to-[#eefbff]"
+                  : plan.key === "pro"
+                    ? "border-blue-200 bg-gradient-to-br from-white to-blue-50"
+                    : "border-slate-200 bg-white"
+              }`}
+            >
+              {plan.badge && (
+                <p
+                  className={`absolute right-5 top-5 rounded-full px-3 py-1 text-xs font-black ${
+                    plan.key === "pro"
+                      ? "bg-blue-100 text-blue-700"
+                      : "bg-cyan-50 text-cyan-700"
+                  }`}
+                >
+                  {plan.badge}
+                </p>
+              )}
+
+              <h3 className="text-2xl font-black text-[#061b3d]">
+                {plan.name}
+              </h3>
+
+              <p className="mt-2 min-h-12 text-sm leading-6 text-slate-500">
+                {plan.description}
+              </p>
+
+              <p className="mt-5 text-4xl font-black text-[#061b3d]">
+                {plan.price}
+              </p>
+
+              <div className="mt-5 space-y-3">
+                {plan.features.map((feature) => (
+                  <div
+                    key={feature}
+                    className={`rounded-2xl p-3 text-sm font-bold leading-6 ${
+                      plan.highlighted
+                        ? "bg-white text-slate-700"
+                        : "bg-slate-50 text-slate-600"
+                    }`}
+                  >
+                    {feature}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6">
+                {plan.key === "free" ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full rounded-full border border-slate-200 bg-slate-50 px-6 py-3 font-black text-slate-400"
+                  >
+                    {currentPlan === "free" ? "Current Plan" : "Included"}
+                  </button>
+                ) : isCurrentPaidPlan ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full rounded-full bg-green-50 px-6 py-3 font-black text-green-700"
+                  >
+                    Current Plan
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={
+                      startingCheckout !== null ||
+                      (isCurrentPlan && currentStatus === "incomplete")
+                    }
+                    onClick={() => handleCheckout(plan.key)}
+                    className={`w-full rounded-full px-6 py-3 font-black text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-60 ${
+                      plan.key === "pro"
+                        ? "bg-gradient-to-r from-[#061b3d] via-[#0b4edb] to-[#00b7c7]"
+                        : "bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c]"
+                    }`}
+                  >
+                    {startingCheckout === plan.key
+                      ? "Starting checkout..."
+                      : canUpgrade
+                        ? plan.cta
+                        : "Start Checkout"}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
         <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
           <h3 className="text-2xl font-black text-[#061b3d]">
-            Billing Notes
+            Tier access summary
           </h3>
 
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            These limits keep Free useful, make Plus the main full-featured
+            plan, and reserve deeper analysis tools for Pro.
+          </p>
+
           <div className="mt-5 space-y-3">
-            <InfoCard
-              title="Secure checkout"
-              description="Payments are handled by Stripe Checkout. SafeSpend does not store card numbers."
+            <FeatureGate
+              label="Free"
+              text="100 transactions/month, 3 budgets max, and 10 AI coach messages/month. Up to 10 bills tracked, no reports, and no protected safe-to-spend."
             />
 
-            <InfoCard
-              title="Subscription updates"
-              description="Stripe webhooks update your SafeSpend plan after checkout, renewal, cancellation, or payment failure."
+            <FeatureGate
+              label="Plus"
+              text="Unlimited transactions and budgets, up to 50 bills, protected safe-to-spend, 20 reports/month, and 100 AI coach messages/month."
+              highlighted
             />
 
-            <InfoCard
-              title="MVP access"
-              description="Feature gates can be tightened after checkout is fully tested. For now, this page establishes the subscription foundation."
+            <FeatureGate
+              label="Pro"
+              text="Everything in Plus, higher AI coaching, advanced reports, deeper insights, exports, and priority future features."
             />
+          </div>
+        </section>
+
+        <section className="rounded-[2rem] border border-yellow-100 bg-yellow-50 p-6 shadow-xl">
+          <h3 className="text-2xl font-black text-yellow-800">
+            Important disclaimer
+          </h3>
+
+          <p className="mt-3 text-sm leading-6 text-yellow-700">
+            SafeSpend AI is a budgeting, spending-awareness, and organization
+            tool. It is not financial, legal, tax, investment, credit repair,
+            debt settlement, banking, or lending advice.
+          </p>
+
+          <div className="mt-5 rounded-3xl bg-white/70 p-4">
+            <p className="text-sm font-black text-yellow-800">
+              Best next step
+            </p>
+            <p className="mt-1 text-sm leading-6 text-yellow-700">
+              Upgrade to Plus when you want bills, protected safe-to-spend,
+              reports, and more AI coaching. Choose Pro when advanced reports,
+              deeper insights, and premium planning tools are ready.
+            </p>
           </div>
         </section>
       </section>
@@ -416,91 +623,38 @@ function SummaryCard({
   );
 }
 
-function PlanCard({
-  name,
-  price,
-  description,
-  features,
-  current = false,
+function FeatureGate({
+  label,
+  text,
   highlighted = false,
-  buttonLabel,
-  disabled = false,
-  onClick,
 }: {
-  name: string;
-  price: string;
-  description: string;
-  features: string[];
-  current?: boolean;
+  label: string;
+  text: string;
   highlighted?: boolean;
-  buttonLabel: string;
-  disabled?: boolean;
-  onClick?: () => void;
 }) {
   return (
-    <section
-      className={`rounded-[2rem] border p-6 shadow-xl ${
+    <div
+      className={`rounded-3xl border p-4 ${
         highlighted
-          ? "border-cyan-200 bg-gradient-to-br from-white to-cyan-50"
-          : "border-slate-200 bg-white"
+          ? "border-cyan-200 bg-cyan-50"
+          : "border-slate-100 bg-slate-50"
       }`}
     >
-      {highlighted && (
-        <p className="mb-3 inline-flex rounded-full bg-cyan-100 px-4 py-2 text-xs font-black uppercase tracking-widest text-cyan-700">
-          Recommended
-        </p>
-      )}
-
-      {current && (
-        <p className="mb-3 inline-flex rounded-full bg-green-100 px-4 py-2 text-xs font-black uppercase tracking-widest text-green-700">
-          Current Plan
-        </p>
-      )}
-
-      <h3 className="text-2xl font-black text-[#061b3d]">{name}</h3>
-
-      <p className="mt-3 text-4xl font-black text-[#061b3d]">{price}</p>
-
-      <p className="mt-3 text-sm leading-6 text-slate-500">{description}</p>
-
-      <div className="mt-5 space-y-3">
-        {features.map((feature) => (
-          <div
-            key={feature}
-            className="rounded-2xl border border-slate-100 bg-slate-50 p-3 text-sm font-bold text-[#061b3d]"
-          >
-            {feature}
-          </div>
-        ))}
-      </div>
-
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled}
-        className={`mt-6 w-full rounded-full px-6 py-3 font-black shadow-lg disabled:opacity-60 ${
-          highlighted
-            ? "bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] text-white"
-            : "border border-slate-200 bg-white text-[#061b3d]"
+      <p
+        className={`font-black ${
+          highlighted ? "text-cyan-800" : "text-[#061b3d]"
         }`}
       >
-        {buttonLabel}
-      </button>
-    </section>
-  );
-}
+        {label}
+      </p>
 
-function InfoCard({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
-      <p className="font-black text-[#061b3d]">{title}</p>
-      <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
+      <p
+        className={`mt-1 text-sm leading-6 ${
+          highlighted ? "text-cyan-700" : "text-slate-500"
+        }`}
+      >
+        {text}
+      </p>
     </div>
   );
 }

@@ -6,6 +6,23 @@ import { supabase } from "@/lib/supabase/client";
 import AppShell from "@/components/AppShell";
 import BillingGate from "@/components/BillingGate";
 
+type PlanKey = "free" | "plus" | "pro";
+
+type BillingStatus =
+  | "free"
+  | "active"
+  | "trialing"
+  | "past_due"
+  | "canceled"
+  | "incomplete"
+  | "incomplete_expired"
+  | "unpaid";
+
+type BillingRecord = {
+  plan: PlanKey;
+  status: BillingStatus;
+};
+
 type Transaction = {
   id: string;
   user_id: string;
@@ -42,8 +59,15 @@ type Bill = {
 
 type FilterRange = "week" | "month" | "all";
 
+const PLUS_REPORT_LIMIT = 20;
+
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
+}
+
+function getMonthStartIso() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 }
 
 function money(value: number) {
@@ -87,10 +111,31 @@ function getFilterStartDate(range: FilterRange) {
   return start;
 }
 
+function isPaidStatus(status?: string | null) {
+  return status === "active" || status === "trialing";
+}
+
+function getEffectivePlan(billing: BillingRecord | null): PlanKey {
+  if (!billing) return "free";
+  if (!isPaidStatus(billing.status)) return "free";
+  if (billing.plan === "pro") return "pro";
+  if (billing.plan === "plus") return "plus";
+  return "free";
+}
+
+function formatPlanLabel(plan: PlanKey) {
+  return plan.charAt(0).toUpperCase() + plan.slice(1);
+}
+
 export default function ReportsPage() {
   const router = useRouter();
 
+  const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState("");
+  const [billing, setBilling] = useState<BillingRecord | null>(null);
+  const [monthlyReportViews, setMonthlyReportViews] = useState(0);
+  const [reportRecorded, setReportRecorded] = useState(false);
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
@@ -99,23 +144,61 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const effectivePlan = getEffectivePlan(billing);
+  const isPlusPlan = effectivePlan === "plus";
+  const isProPlan = effectivePlan === "pro";
+
+  const reportLimit = isPlusPlan ? PLUS_REPORT_LIMIT : isProPlan ? null : 0;
+
+  const reportsRemaining =
+    reportLimit === null ? null : Math.max(reportLimit - monthlyReportViews, 0);
+
+  const reportLimitReached =
+    reportLimit !== null && monthlyReportViews >= reportLimit;
+
   useEffect(() => {
     checkUser();
   }, []);
 
+  useEffect(() => {
+    if (loading) return;
+    if (!userId) return;
+    if (reportRecorded) return;
+    if (effectivePlan === "free") return;
+    if (reportLimitReached) return;
+
+    recordReportView(userId);
+  }, [
+    loading,
+    userId,
+    reportRecorded,
+    effectivePlan,
+    reportLimitReached,
+  ]);
+
   async function checkUser() {
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
+
+    if (userError) {
+      setError(userError.message);
+      setLoading(false);
+      return;
+    }
 
     if (!user) {
       router.push("/login");
       return;
     }
 
+    setUserId(user.id);
     setEmail(user.email || "");
 
     await Promise.all([
+      loadBilling(user.id),
+      loadReportUsage(user.id),
       loadTransactions(user.id),
       loadBudgets(user.id),
       loadBills(user.id),
@@ -124,11 +207,68 @@ export default function ReportsPage() {
     setLoading(false);
   }
 
-  async function loadTransactions(userId: string) {
+  async function loadBilling(currentUserId: string) {
+    const { data, error } = await supabase
+      .from("user_billing")
+      .select("plan, status")
+      .eq("user_id", currentUserId)
+      .maybeSingle();
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setBilling(
+      data
+        ? (data as BillingRecord)
+        : {
+            plan: "free",
+            status: "free",
+          }
+    );
+  }
+
+  async function loadReportUsage(currentUserId: string) {
+    const { count, error } = await supabase
+      .from("usage_events")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", currentUserId)
+      .eq("event_type", "report_view")
+      .gte("created_at", getMonthStartIso());
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setMonthlyReportViews(count || 0);
+  }
+
+  async function recordReportView(currentUserId: string) {
+    const { error } = await supabase.from("usage_events").insert({
+      user_id: currentUserId,
+      event_type: "report_view",
+      metadata: {
+        plan: effectivePlan,
+        filter_range: filterRange,
+      },
+    });
+
+    if (error) {
+      console.warn("Unable to record report usage event:", error.message);
+      return;
+    }
+
+    setReportRecorded(true);
+    await loadReportUsage(currentUserId);
+  }
+
+  async function loadTransactions(currentUserId: string) {
     const { data, error } = await supabase
       .from("transactions")
       .select("*")
-      .eq("user_id", userId)
+      .eq("user_id", currentUserId)
       .order("date", { ascending: false })
       .order("created_at", { ascending: false });
 
@@ -140,11 +280,11 @@ export default function ReportsPage() {
     setTransactions((data || []) as Transaction[]);
   }
 
-  async function loadBudgets(userId: string) {
+  async function loadBudgets(currentUserId: string) {
     const { data, error } = await supabase
       .from("budgets")
       .select("*")
-      .eq("user_id", userId)
+      .eq("user_id", currentUserId)
       .order("category", { ascending: true });
 
     if (error) {
@@ -155,11 +295,11 @@ export default function ReportsPage() {
     setBudgets((data || []) as Budget[]);
   }
 
-  async function loadBills(userId: string) {
+  async function loadBills(currentUserId: string) {
     const { data, error } = await supabase
       .from("bills")
       .select("*")
-      .eq("user_id", userId)
+      .eq("user_id", currentUserId)
       .order("is_paid", { ascending: true })
       .order("due_date", { ascending: true });
 
@@ -230,9 +370,7 @@ export default function ReportsPage() {
         category,
         spent,
         percent:
-          totals.spent > 0
-            ? Math.round((Number(spent) / totals.spent) * 100)
-            : 0,
+          totals.spent > 0 ? Math.round((Number(spent) / totals.spent) * 100) : 0,
       }))
       .sort((a, b) => b.spent - a.spent);
   }, [filteredTransactions, totals.spent]);
@@ -253,9 +391,7 @@ export default function ReportsPage() {
         merchant,
         spent,
         percent:
-          totals.spent > 0
-            ? Math.round((Number(spent) / totals.spent) * 100)
-            : 0,
+          totals.spent > 0 ? Math.round((Number(spent) / totals.spent) * 100) : 0,
       }))
       .sort((a, b) => b.spent - a.spent)
       .slice(0, 8);
@@ -319,6 +455,10 @@ export default function ReportsPage() {
   const protectedSafeToSpend = totals.net - upcomingBillsTotal;
 
   const reportSummary = useMemo(() => {
+    if (reportLimitReached) {
+      return "Your monthly Plus report limit has been reached. Upgrade to Pro for unlimited reports, advanced reports, deeper insights, and priority future features.";
+    }
+
     if (totals.count === 0) {
       return "No report data yet. Add income, expenses, bills, and budgets to generate useful insights.";
     }
@@ -340,7 +480,13 @@ export default function ReportsPage() {
     }
 
     return "Your spending picture looks stable for this period. Keep logging activity so SafeSpend can continue giving accurate guidance.";
-  }, [totals.count, protectedSafeToSpend, budgetPressure, upcomingBillsTotal]);
+  }, [
+    reportLimitReached,
+    totals.count,
+    protectedSafeToSpend,
+    budgetPressure,
+    upcomingBillsTotal,
+  ]);
 
   if (loading) {
     return (
@@ -357,27 +503,37 @@ export default function ReportsPage() {
       subtitle="Review income, spending, categories, budget pressure, bills due soon, and the patterns that affect your safe-to-spend number."
     >
       <BillingGate requiredPlan="plus" featureName="Reports & Spending Insights">
-        <section className="mb-6 flex flex-wrap gap-3 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-lg">
-          <FilterButton
-            label="This Week"
-            active={filterRange === "week"}
-            onClick={() => setFilterRange("week")}
+        <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <MetricCard
+            label="Plan"
+            value={formatPlanLabel(effectivePlan)}
+            helper={
+              isPlusPlan
+                ? `Up to ${PLUS_REPORT_LIMIT} reports/month`
+                : "Unlimited reports"
+            }
           />
 
-          <FilterButton
-            label="This Month"
-            active={filterRange === "month"}
-            onClick={() => setFilterRange("month")}
+          <MetricCard
+            label="Report Usage"
+            value={
+              reportLimit === null
+                ? `${monthlyReportViews} viewed`
+                : `${monthlyReportViews}/${reportLimit}`
+            }
+            helper={
+              reportLimit === null
+                ? "No report limit"
+                : `${reportsRemaining} reports left`
+            }
+            warning={
+              reportLimit !== null &&
+              reportsRemaining !== null &&
+              reportsRemaining <= 5
+            }
+            danger={reportLimitReached}
           />
 
-          <FilterButton
-            label="All Time"
-            active={filterRange === "all"}
-            onClick={() => setFilterRange("all")}
-          />
-        </section>
-
-        <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             label="Income"
             value={money(totals.income)}
@@ -396,12 +552,59 @@ export default function ReportsPage() {
             helper="After bills due soon"
             danger={protectedSafeToSpend <= 0}
           />
+        </section>
 
-          <MetricCard
-            label="Risk Level"
-            value={totals.risk}
-            helper={`${totals.count} entries in view`}
-            danger={totals.risk === "Critical" || totals.risk === "High"}
+        {reportLimitReached && (
+          <section className="mb-6 rounded-[2rem] bg-gradient-to-br from-[#061b3d] via-[#0b4edb] to-[#00b7c7] p-6 text-white shadow-xl">
+            <p className="mb-2 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-widest">
+              Plus Report Limit Reached
+            </p>
+
+            <h3 className="text-3xl font-black tracking-[-0.04em]">
+              You used all {PLUS_REPORT_LIMIT} reports this month.
+            </h3>
+
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-white/80">
+              Upgrade to Pro for unlimited reports, advanced reports, deeper
+              insights, exports, higher AI coaching, and priority future
+              features.
+            </p>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <a
+                href="/billing"
+                className="rounded-full bg-white px-5 py-3 text-sm font-black text-[#061b3d]"
+              >
+                Upgrade to Pro
+              </a>
+
+              <a
+                href="/dashboard"
+                className="rounded-full border border-white/25 bg-white/10 px-5 py-3 text-sm font-black text-white"
+              >
+                Back to Dashboard
+              </a>
+            </div>
+          </section>
+        )}
+
+        <section className="mb-6 flex flex-wrap gap-3 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-lg">
+          <FilterButton
+            label="This Week"
+            active={filterRange === "week"}
+            onClick={() => setFilterRange("week")}
+          />
+
+          <FilterButton
+            label="This Month"
+            active={filterRange === "month"}
+            onClick={() => setFilterRange("month")}
+          />
+
+          <FilterButton
+            label="All Time"
+            active={filterRange === "all"}
+            onClick={() => setFilterRange("all")}
           />
         </section>
 
@@ -425,303 +628,311 @@ export default function ReportsPage() {
           </section>
         )}
 
-        <section className="mb-6 grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-            <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h3 className="text-2xl font-black text-[#061b3d]">
-                  Spending by Category
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Categories ranked by spending in this period.
-                </p>
-              </div>
-
-              <a
-                href="/budgets"
-                className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-[#061b3d]"
-              >
-                Adjust Budgets
-              </a>
-            </div>
-
-            {spendingByCategory.length === 0 ? (
-              <EmptyState
-                title="No spending categories yet"
-                description="Add expense transactions to see category trends."
-                href="/transactions"
-                action="Add Transactions"
-              />
-            ) : (
-              <div className="space-y-4">
-                {spendingByCategory.map((item) => (
-                  <ProgressRow
-                    key={item.category}
-                    label={item.category}
-                    value={money(item.spent)}
-                    percent={item.percent}
-                    danger={item.percent >= 50}
-                    helper={`${item.percent}% of total spending`}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-            <div className="mb-5">
-              <h3 className="text-2xl font-black text-[#061b3d]">
-                Top Merchants
-              </h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Where your money went most often by total spend.
-              </p>
-            </div>
-
-            {topMerchants.length === 0 ? (
-              <EmptyState
-                title="No merchant data yet"
-                description="Add expenses with merchant names to see top spending places."
-                href="/transactions"
-                action="Add Transactions"
-              />
-            ) : (
-              <div className="space-y-3">
-                {topMerchants.map((item) => (
-                  <div
-                    key={item.merchant}
-                    className="flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4"
-                  >
-                    <div>
-                      <p className="font-black text-[#061b3d]">
-                        {item.merchant}
-                      </p>
-                      <p className="text-sm text-slate-500">
-                        {item.percent}% of total spending
-                      </p>
-                    </div>
-
-                    <p className="font-black text-[#061b3d]">
-                      {money(item.spent)}
+        {reportLimitReached ? (
+          <LockedReportPreview />
+        ) : (
+          <>
+            <section className="mb-6 grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
+              <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+                <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h3 className="text-2xl font-black text-[#061b3d]">
+                      Spending by Category
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Categories ranked by spending in this period.
                     </p>
                   </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </section>
 
-        <section className="mb-6 grid gap-6 xl:grid-cols-2">
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-            <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h3 className="text-2xl font-black text-[#061b3d]">
-                  Budget Pressure
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Spending compared to your weekly category limits.
-                </p>
-              </div>
+                  <a
+                    href="/budgets"
+                    className="rounded-full border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-[#061b3d]"
+                  >
+                    Adjust Budgets
+                  </a>
+                </div>
 
-              <a
-                href="/budgets"
-                className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
-              >
-                Manage Budgets
-              </a>
-            </div>
-
-            {budgetPressure.length === 0 ? (
-              <EmptyState
-                title="No budget limits yet"
-                description="Add budgets so SafeSpend can calculate category pressure."
-                href="/budgets"
-                action="Set Budgets"
-              />
-            ) : (
-              <div className="space-y-4">
-                {budgetPressure.map((item) => (
-                  <ProgressRow
-                    key={item.category}
-                    label={item.category}
-                    value={`${money(item.spent)} of ${money(item.limit)}`}
-                    percent={Math.min(item.percentUsed, 100)}
-                    danger={item.status === "Over Budget"}
-                    warning={item.status === "Close"}
-                    helper={item.status}
+                {spendingByCategory.length === 0 ? (
+                  <EmptyState
+                    title="No spending categories yet"
+                    description="Add expense transactions to see category trends."
+                    href="/transactions"
+                    action="Add Transactions"
                   />
-                ))}
-              </div>
-            )}
-          </section>
+                ) : (
+                  <div className="space-y-4">
+                    {spendingByCategory.map((item) => (
+                      <ProgressRow
+                        key={item.category}
+                        label={item.category}
+                        value={money(item.spent)}
+                        percent={item.percent}
+                        danger={item.percent >= 50}
+                        helper={`${item.percent}% of total spending`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
 
-          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-            <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h3 className="text-2xl font-black text-[#061b3d]">
-                  Bills & Obligations
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Upcoming and overdue bills affecting safe-to-spend.
-                </p>
-              </div>
+              <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+                <div className="mb-5">
+                  <h3 className="text-2xl font-black text-[#061b3d]">
+                    Top Merchants
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Where your money went most often by total spend.
+                  </p>
+                </div>
 
-              <a
-                href="/bills"
-                className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
-              >
-                Manage Bills
-              </a>
-            </div>
-
-            <div className="mb-5 grid gap-3 md:grid-cols-3">
-              <MiniStat
-                label="Due Soon"
-                value={money(upcomingBillsTotal)}
-                helper={`${upcomingBills.length} bills`}
-              />
-              <MiniStat
-                label="Overdue"
-                value={String(overdueBills.length)}
-                helper="unpaid"
-                danger={overdueBills.length > 0}
-              />
-              <MiniStat
-                label="Protected Safe"
-                value={money(protectedSafeToSpend)}
-                helper="after bills"
-                danger={protectedSafeToSpend <= 0}
-              />
-            </div>
-
-            {upcomingBills.length === 0 && overdueBills.length === 0 ? (
-              <EmptyState
-                title="No bill pressure right now"
-                description="Add upcoming bills so SafeSpend can protect that money."
-                href="/bills"
-                action="Add Bills"
-              />
-            ) : (
-              <div className="space-y-3">
-                {[...overdueBills, ...upcomingBills].slice(0, 7).map((bill) => {
-                  const days = daysUntil(bill.due_date);
-                  const overdue = days < 0;
-
-                  return (
-                    <div
-                      key={bill.id}
-                      className={`rounded-2xl border p-4 ${
-                        overdue
-                          ? "border-red-100 bg-red-50"
-                          : "border-slate-100 bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-4">
+                {topMerchants.length === 0 ? (
+                  <EmptyState
+                    title="No merchant data yet"
+                    description="Add expenses with merchant names to see top spending places."
+                    href="/transactions"
+                    action="Add Transactions"
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    {topMerchants.map((item) => (
+                      <div
+                        key={item.merchant}
+                        className="flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                      >
                         <div>
-                          <p
-                            className={`font-black ${
-                              overdue ? "text-red-700" : "text-[#061b3d]"
-                            }`}
-                          >
-                            {bill.bill_name}
+                          <p className="font-black text-[#061b3d]">
+                            {item.merchant}
                           </p>
-
-                          <p
-                            className={`text-sm ${
-                              overdue ? "text-red-600" : "text-slate-500"
-                            }`}
-                          >
-                            {overdue
-                              ? `Overdue by ${Math.abs(days)} days`
-                              : days === 0
-                                ? "Due today"
-                                : days === 1
-                                  ? "Due tomorrow"
-                                  : `Due in ${days} days`}{" "}
-                            · {formatDate(bill.due_date)}
-                            {bill.is_autopay ? " · Autopay" : ""}
+                          <p className="text-sm text-slate-500">
+                            {item.percent}% of total spending
                           </p>
                         </div>
 
+                        <p className="font-black text-[#061b3d]">
+                          {money(item.spent)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </section>
+
+            <section className="mb-6 grid gap-6 xl:grid-cols-2">
+              <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+                <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h3 className="text-2xl font-black text-[#061b3d]">
+                      Budget Pressure
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Spending compared to your weekly category limits.
+                    </p>
+                  </div>
+
+                  <a
+                    href="/budgets"
+                    className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
+                  >
+                    Manage Budgets
+                  </a>
+                </div>
+
+                {budgetPressure.length === 0 ? (
+                  <EmptyState
+                    title="No budget limits yet"
+                    description="Add budgets so SafeSpend can calculate category pressure."
+                    href="/budgets"
+                    action="Set Budgets"
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    {budgetPressure.map((item) => (
+                      <ProgressRow
+                        key={item.category}
+                        label={item.category}
+                        value={`${money(item.spent)} of ${money(item.limit)}`}
+                        percent={Math.min(item.percentUsed, 100)}
+                        danger={item.status === "Over Budget"}
+                        warning={item.status === "Close"}
+                        helper={item.status}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+                <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h3 className="text-2xl font-black text-[#061b3d]">
+                      Bills & Obligations
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Upcoming and overdue bills affecting safe-to-spend.
+                    </p>
+                  </div>
+
+                  <a
+                    href="/bills"
+                    className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
+                  >
+                    Manage Bills
+                  </a>
+                </div>
+
+                <div className="mb-5 grid gap-3 md:grid-cols-3">
+                  <MiniStat
+                    label="Due Soon"
+                    value={money(upcomingBillsTotal)}
+                    helper={`${upcomingBills.length} bills`}
+                  />
+                  <MiniStat
+                    label="Overdue"
+                    value={String(overdueBills.length)}
+                    helper="unpaid"
+                    danger={overdueBills.length > 0}
+                  />
+                  <MiniStat
+                    label="Protected Safe"
+                    value={money(protectedSafeToSpend)}
+                    helper="after bills"
+                    danger={protectedSafeToSpend <= 0}
+                  />
+                </div>
+
+                {upcomingBills.length === 0 && overdueBills.length === 0 ? (
+                  <EmptyState
+                    title="No bill pressure right now"
+                    description="Add upcoming bills so SafeSpend can protect that money."
+                    href="/bills"
+                    action="Add Bills"
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    {[...overdueBills, ...upcomingBills]
+                      .slice(0, 7)
+                      .map((bill) => {
+                        const days = daysUntil(bill.due_date);
+                        const overdue = days < 0;
+
+                        return (
+                          <div
+                            key={bill.id}
+                            className={`rounded-2xl border p-4 ${
+                              overdue
+                                ? "border-red-100 bg-red-50"
+                                : "border-slate-100 bg-slate-50"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <p
+                                  className={`font-black ${
+                                    overdue ? "text-red-700" : "text-[#061b3d]"
+                                  }`}
+                                >
+                                  {bill.bill_name}
+                                </p>
+
+                                <p
+                                  className={`text-sm ${
+                                    overdue ? "text-red-600" : "text-slate-500"
+                                  }`}
+                                >
+                                  {overdue
+                                    ? `Overdue by ${Math.abs(days)} days`
+                                    : days === 0
+                                      ? "Due today"
+                                      : days === 1
+                                        ? "Due tomorrow"
+                                        : `Due in ${days} days`}{" "}
+                                  · {formatDate(bill.due_date)}
+                                  {bill.is_autopay ? " · Autopay" : ""}
+                                </p>
+                              </div>
+
+                              <p
+                                className={`font-black ${
+                                  overdue ? "text-red-700" : "text-[#061b3d]"
+                                }`}
+                              >
+                                {money(Number(bill.amount))}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </section>
+            </section>
+
+            <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+              <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h3 className="text-2xl font-black text-[#061b3d]">
+                    Recent Activity
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Latest transactions included in your selected report view.
+                  </p>
+                </div>
+
+                <a
+                  href="/transactions"
+                  className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
+                >
+                  Open Transactions
+                </a>
+              </div>
+
+              {filteredTransactions.length === 0 ? (
+                <EmptyState
+                  title="No activity yet"
+                  description="Add transactions to start generating reports."
+                  href="/transactions"
+                  action="Add Transaction"
+                />
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {filteredTransactions.slice(0, 8).map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-black text-[#061b3d]">
+                            {tx.merchant || tx.category}
+                          </p>
+                          <p className="text-sm text-slate-500">
+                            {tx.type} · {tx.category} · {formatDate(tx.date)}
+                          </p>
+                          {tx.description && (
+                            <p className="mt-1 text-xs text-slate-400">
+                              {tx.description}
+                            </p>
+                          )}
+                        </div>
+
                         <p
-                          className={`font-black ${
-                            overdue ? "text-red-700" : "text-[#061b3d]"
+                          className={`whitespace-nowrap font-black ${
+                            Number(tx.amount) < 0
+                              ? "text-red-500"
+                              : "text-green-600"
                           }`}
                         >
-                          {money(Number(bill.amount))}
+                          {money(Number(tx.amount))}
                         </p>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        </section>
-
-        <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
-          <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h3 className="text-2xl font-black text-[#061b3d]">
-                Recent Activity
-              </h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Latest transactions included in your selected report view.
-              </p>
-            </div>
-
-            <a
-              href="/transactions"
-              className="rounded-full bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] px-5 py-3 text-sm font-black text-white shadow-lg"
-            >
-              Open Transactions
-            </a>
-          </div>
-
-          {filteredTransactions.length === 0 ? (
-            <EmptyState
-              title="No activity yet"
-              description="Add transactions to start generating reports."
-              href="/transactions"
-              action="Add Transaction"
-            />
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {filteredTransactions.slice(0, 8).map((tx) => (
-                <div
-                  key={tx.id}
-                  className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-black text-[#061b3d]">
-                        {tx.merchant || tx.category}
-                      </p>
-                      <p className="text-sm text-slate-500">
-                        {tx.type} · {tx.category} · {formatDate(tx.date)}
-                      </p>
-                      {tx.description && (
-                        <p className="mt-1 text-xs text-slate-400">
-                          {tx.description}
-                        </p>
-                      )}
-                    </div>
-
-                    <p
-                      className={`whitespace-nowrap font-black ${
-                        Number(tx.amount) < 0
-                          ? "text-red-500"
-                          : "text-green-600"
-                      }`}
-                    >
-                      {money(Number(tx.amount))}
-                    </p>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-        </section>
+              )}
+            </section>
+          </>
+        )}
       </BillingGate>
     </AppShell>
   );
@@ -732,21 +943,31 @@ function MetricCard({
   value,
   helper,
   danger = false,
+  warning = false,
 }: {
   label: string;
   value: string;
   helper: string;
   danger?: boolean;
+  warning?: boolean;
 }) {
   return (
     <div
       className={`rounded-3xl border p-5 shadow-lg ${
-        danger ? "border-red-100 bg-red-50" : "border-slate-200 bg-white"
+        danger
+          ? "border-red-100 bg-red-50"
+          : warning
+            ? "border-yellow-100 bg-yellow-50"
+            : "border-slate-200 bg-white"
       }`}
     >
       <p
         className={`text-xs font-black uppercase tracking-widest ${
-          danger ? "text-red-500" : "text-slate-500"
+          danger
+            ? "text-red-500"
+            : warning
+              ? "text-yellow-600"
+              : "text-slate-500"
         }`}
       >
         {label}
@@ -754,13 +975,25 @@ function MetricCard({
 
       <p
         className={`mt-2 text-2xl font-black ${
-          danger ? "text-red-700" : "text-[#061b3d]"
+          danger
+            ? "text-red-700"
+            : warning
+              ? "text-yellow-800"
+              : "text-[#061b3d]"
         }`}
       >
         {value}
       </p>
 
-      <p className={`mt-1 text-xs ${danger ? "text-red-600" : "text-slate-500"}`}>
+      <p
+        className={`mt-1 text-xs ${
+          danger
+            ? "text-red-600"
+            : warning
+              ? "text-yellow-700"
+              : "text-slate-500"
+        }`}
+      >
         {helper}
       </p>
     </div>
@@ -905,5 +1138,57 @@ function EmptyState({
         {action}
       </a>
     </div>
+  );
+}
+
+function LockedReportPreview() {
+  return (
+    <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+      <div className="rounded-[2rem] bg-slate-50 p-6">
+        <p className="mb-2 inline-flex rounded-full bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-widest text-blue-700">
+          Pro Unlock
+        </p>
+
+        <h3 className="text-3xl font-black tracking-[-0.04em] text-[#061b3d]">
+          Unlimited reports are included with Pro.
+        </h3>
+
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+          Plus includes up to 20 spending reports per month. Pro is designed for
+          deeper analysis, unlimited reporting, exports, advanced reports, and
+          future planning tools.
+        </p>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="rounded-3xl bg-white p-5">
+            <p className="font-black text-[#061b3d]">Advanced Reports</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              More detailed filters, deeper comparisons, and premium analysis.
+            </p>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5">
+            <p className="font-black text-[#061b3d]">Deeper Insights</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Identify patterns, spending pressure, and behavior trends.
+            </p>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5">
+            <p className="font-black text-[#061b3d]">Future Exports</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Export-ready financial records and more advanced planning tools.
+            </p>
+          </div>
+        </div>
+
+        <a
+          href="/billing"
+          className="mt-6 inline-flex rounded-full bg-gradient-to-r from-[#061b3d] via-[#0b4edb] to-[#00b7c7] px-6 py-3 text-sm font-black text-white shadow-lg"
+        >
+          Upgrade to Pro
+        </a>
+      </div>
+    </section>
   );
 }
