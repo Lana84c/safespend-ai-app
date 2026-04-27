@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useState } from "react";
@@ -50,9 +51,16 @@ export default function AppShell({
           <div className="rounded-[2rem] border border-white/70 bg-white/92 p-4 shadow-xl backdrop-blur-xl">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <Link href="/dashboard" className="flex items-center gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] text-xl font-black text-white shadow-lg">
-                  S
-                </div>
+                <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[1.75rem] bg-white shadow-[0_18px_50px_rgba(0,183,199,0.35)] ring-1 ring-cyan-100">
+  <Image
+    src="/safespend-logo.png"
+    alt="SafeSpend AI logo"
+    width={95}
+    height={95}
+    className="h-full w-full scale-150 object-contain"
+    priority
+  />
+</div>
 
                 <div className="min-w-fit">
                   <p className="text-xl font-black tracking-[-0.03em] text-[#061b3d]">
