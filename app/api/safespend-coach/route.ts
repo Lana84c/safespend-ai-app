@@ -72,6 +72,19 @@ const GEMINI_MODEL_CHAIN = [
   .filter(Boolean)
   .filter((model, index, array) => array.indexOf(model) === index);
 
+async function getGeminiClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    return null;
+  }
+
+  const { GoogleGenAI } = await import("@google/genai");
+
+  return new GoogleGenAI({
+    apiKey,
+  });
+}
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
 }
@@ -361,7 +374,8 @@ function buildLocalFallbackResponse(
   const riskLevel = getRiskLevel(projectedSafeToSpend);
   const categoryStatus = findCategoryStatus(category, body.categoryPressure);
 
-  const shouldAutofillTransaction = intent === "log_transaction" && amount > 0;
+  const shouldAutofillTransaction =
+    intent === "log_transaction" && amount > 0;
 
   let summary =
     "SafeSpend is using a backup response because the AI model is temporarily unavailable.";
@@ -505,62 +519,22 @@ Required JSON shape:
 `;
 }
 
-async function generateWithGemini(prompt: string) {
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("Missing GEMINI_API_KEY.");
-  }
-
+async function generateWithGemini(prompt: string, ai: any) {
   let lastError: any = null;
 
   for (const model of GEMINI_MODEL_CHAIN) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    {
-                      text: prompt,
-                    },
-                  ],
-                },
-              ],
-              generationConfig: {
-                responseMimeType: "application/json",
-                temperature: 0.2,
-              },
-            }),
-          }
-        );
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            temperature: 0.2,
+          },
+        });
 
-        const data = await response.json();
-
-        if (!response.ok) {
-          const error: any = new Error(
-            data?.error?.message ||
-              `Gemini request failed with ${response.status}`
-          );
-          error.status = response.status;
-          error.details = data;
-          throw error;
-        }
-
-        const text =
-          data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-          data?.candidates?.[0]?.content?.parts
-            ?.map((part: any) => part.text || "")
-            .join("") ||
-          "";
-
+        const text = response.text || "";
         const parsed = parseJsonResponse(text);
 
         return {
@@ -571,7 +545,7 @@ async function generateWithGemini(prompt: string) {
         lastError = error;
 
         console.error(
-          `SafeSpend Gemini REST error on ${model}, attempt ${
+          `SafeSpend Gemini API error on ${model}, attempt ${
             attempt + 1
           }:`,
           error
@@ -600,7 +574,9 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    const ai = await getGeminiClient();
+
+    if (!ai) {
       console.warn("Missing GEMINI_API_KEY. Returning local fallback response.");
 
       return NextResponse.json({
@@ -616,7 +592,7 @@ export async function POST(request: Request) {
     const prompt = buildPrompt(body);
 
     try {
-      const { parsed, model } = await generateWithGemini(prompt);
+      const { parsed, model } = await generateWithGemini(prompt, ai);
 
       return NextResponse.json({
         ...parsed,
