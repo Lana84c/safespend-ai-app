@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import LegalFooter from "@/components/LegalFooter";
 
 const features = [
   {
@@ -271,13 +272,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <footer className="border-t border-slate-200 bg-white/70 px-4 py-8 text-center text-sm font-bold text-slate-500 sm:px-6 lg:px-8">
-        <p>
-          SafeSpend AI is for budgeting, spending awareness, and personal money
-          organization. It is not financial, legal, tax, investment, credit, or
-          banking advice.
-        </p>
-      </footer>
+      <LegalFooter />
     </main>
   );
 }
