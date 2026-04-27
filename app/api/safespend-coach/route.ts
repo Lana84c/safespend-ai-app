@@ -35,6 +35,16 @@ const allowedIntents = [
   "general_guidance",
 ];
 
+type UserSettings = {
+  paycheck_frequency?: string;
+  weekly_reset_day?: string;
+  monthly_income_target?: number;
+  emergency_buffer_goal?: number;
+  spending_style?: string;
+  top_priority?: string;
+  notes?: string | null;
+};
+
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
 }
@@ -80,6 +90,24 @@ function safeText(value: unknown, fallback = "") {
   return text || fallback;
 }
 
+function normalizeUserSettings(value: unknown): UserSettings {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const settings = value as UserSettings;
+
+  return {
+    paycheck_frequency: safeText(settings.paycheck_frequency, "not set"),
+    weekly_reset_day: safeText(settings.weekly_reset_day, "not set"),
+    monthly_income_target: Number(settings.monthly_income_target || 0),
+    emergency_buffer_goal: Number(settings.emergency_buffer_goal || 0),
+    spending_style: safeText(settings.spending_style, "balanced"),
+    top_priority: safeText(settings.top_priority, "avoid_overspending"),
+    notes: settings.notes ? String(settings.notes).trim() : null,
+  };
+}
+
 export async function GET() {
   return NextResponse.json({
     ok: true,
@@ -112,6 +140,8 @@ export async function POST(request: Request) {
         : [],
     };
 
+    const userSettings = normalizeUserSettings(body.userSettings);
+
     if (!message) {
       return NextResponse.json(
         { error: "Please enter a message for SafeSpend AI." },
@@ -130,6 +160,7 @@ Your job is to:
 2. Detect whether the user is logging a transaction, asking if they can afford something, asking for overspending help, or asking for general guidance.
 3. Return clean structured JSON only.
 4. Provide helpful, non-judgmental spending coaching.
+5. Use the user's personal settings to make the advice more relevant.
 
 Today's date is ${today}.
 Yesterday's date is ${yesterday}.
@@ -144,9 +175,18 @@ Total spent: ${dashboardContext.totalSpent}
 Current filter range: ${dashboardContext.filterRange}
 Category pressure JSON: ${JSON.stringify(dashboardContext.categoryPressure)}
 
-Rules:
+User settings:
+Paycheck frequency: ${userSettings.paycheck_frequency || "not set"}
+Weekly reset day: ${userSettings.weekly_reset_day || "not set"}
+Monthly income target: ${userSettings.monthly_income_target || 0}
+Emergency buffer goal: ${userSettings.emergency_buffer_goal || 0}
+Spending style: ${userSettings.spending_style || "balanced"}
+Top money priority: ${userSettings.top_priority || "avoid_overspending"}
+User notes: ${userSettings.notes || "none"}
+
+Core rules:
 - You are not a financial advisor.
-- Do not give investment, legal, tax, or credit repair advice.
+- Do not give investment, legal, tax, credit repair, or debt settlement advice.
 - Keep guidance practical, supportive, and spending-awareness focused.
 - Amount should always be positive in the transaction object. The app will decide how to save income vs expense.
 - Use exact enum values only.
@@ -169,6 +209,20 @@ Category rules:
 - Hair, nails, gifts, small personal spending = Personal
 - Unknown = Other
 
+Personalization rules:
+- If spending_style is strict, give firmer warnings sooner and recommend pausing discretionary spending when risk is Medium or higher.
+- If spending_style is balanced, give practical advice with clear tradeoffs.
+- If spending_style is flexible, keep the guidance lighter but still warn clearly when safe-to-spend is low or negative.
+- If top_priority is avoid_overspending, focus on preserving safe-to-spend.
+- If top_priority is pay_down_debt, encourage caution with discretionary purchases and prioritize debt progress.
+- If top_priority is save_more or build_emergency_fund, compare discretionary spending against the emergency buffer goal.
+- If top_priority is manage_bills, be extra cautious about purchases that could interfere with bills.
+- If top_priority is control_shopping, be extra cautious with Shopping, Personal, Target, Amazon, clothing, beauty, and impulse purchases.
+- If emergency_buffer_goal is greater than 0 and safeToSpend is below that goal, mention preserving or rebuilding the buffer.
+- If monthly_income_target is greater than 0 and current totalIncome is below that target, mention income is not yet at the target when relevant.
+- If weekly_reset_day is set, reference the weekly reset timing when giving weekly spending advice.
+- Use the notes as additional user preference context, but do not expose them awkwardly or repeat them word-for-word unless useful.
+
 Coaching rules:
 - safeToSpendImpact should say how the action changes safe-to-spend, for example "-$64", "+$1200", or "-$150 if purchased".
 - categoryStatus must be one of: OK, Close, Over Budget, Check First, Not Applicable.
@@ -178,6 +232,11 @@ Coaching rules:
 - For discretionary purchases, be more cautious.
 - For essentials, acknowledge necessity while still encouraging awareness.
 - For overspending_help, give a recovery plan instead of filling a normal purchase recommendation.
+
+Autofill rules:
+- shouldAutofillTransaction should be true only when the user describes a transaction that happened or income they received.
+- shouldAutofillTransaction should be false for purchase_check, overspending_help, and general_guidance unless the user clearly says the transaction already happened.
+- Even when shouldAutofillTransaction is false, still return a best-estimate transaction object if an amount/category is mentioned.
 `;
 
     const response = await ai.models.generateContent({

@@ -25,6 +25,16 @@ type Budget = {
   created_at: string;
 };
 
+type UserSettings = {
+  paycheck_frequency: string;
+  weekly_reset_day: string;
+  monthly_income_target: number;
+  emergency_buffer_goal: number;
+  spending_style: string;
+  top_priority: string;
+  notes: string | null;
+};
+
 type FilterRange = "week" | "month" | "all";
 
 type SafeSpendIntent =
@@ -88,6 +98,7 @@ export default function DashboardPage() {
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [filterRange, setFilterRange] = useState<FilterRange>("week");
 
   const [transactionDate, setTransactionDate] = useState(getTodayDate());
@@ -105,14 +116,14 @@ export default function DashboardPage() {
   const [editDescription, setEditDescription] = useState("");
   const [editAmount, setEditAmount] = useState("");
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
   const [aiMessage, setAiMessage] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResponse, setAiResponse] =
     useState<SafeSpendCoachResponse | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     checkUser();
@@ -131,7 +142,11 @@ export default function DashboardPage() {
     setUserId(user.id);
     setEmail(user.email || "");
 
-    await Promise.all([loadTransactions(user.id), loadBudgets(user.id)]);
+    await Promise.all([
+      loadTransactions(user.id),
+      loadBudgets(user.id),
+      loadUserSettings(user.id),
+    ]);
 
     setLoading(false);
   }
@@ -165,6 +180,23 @@ export default function DashboardPage() {
     }
 
     setBudgets((data || []) as Budget[]);
+  }
+
+  async function loadUserSettings(currentUserId: string) {
+    const { data, error } = await supabase
+      .from("user_settings")
+      .select(
+        "paycheck_frequency, weekly_reset_day, monthly_income_target, emergency_buffer_goal, spending_style, top_priority, notes"
+      )
+      .eq("user_id", currentUserId)
+      .maybeSingle();
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setUserSettings((data || null) as UserSettings | null);
   }
 
   function getFilterStartDate(range: FilterRange) {
@@ -283,6 +315,7 @@ export default function DashboardPage() {
           totalSpent: totals.totalSpent,
           filterRange,
           categoryPressure,
+          userSettings,
         }),
       });
 
@@ -503,6 +536,13 @@ export default function DashboardPage() {
               Budgets
             </a>
 
+            <a
+              href="/settings"
+              className="rounded-full border border-slate-200 bg-white px-5 py-3 font-black text-[#061b3d] shadow-sm"
+            >
+              Settings
+            </a>
+
             <button
               type="button"
               onClick={handleLogout}
@@ -525,8 +565,8 @@ export default function DashboardPage() {
               </h2>
 
               <p className="mt-5 max-w-2xl text-white/80">
-                Add income, expenses, and weekly category limits so SafeSpend can
-                show your real spending pressure.
+                Add income, expenses, weekly limits, and personal settings so
+                SafeSpend can guide your real spending decisions.
               </p>
             </div>
 
@@ -690,6 +730,19 @@ export default function DashboardPage() {
               after overspending. SafeSpend will fill the form when it detects a
               transaction.
             </p>
+
+            {userSettings ? (
+              <p className="mt-3 inline-flex rounded-full bg-green-50 px-4 py-2 text-xs font-black text-green-700">
+                Personal settings active
+              </p>
+            ) : (
+              <a
+                href="/settings"
+                className="mt-3 inline-flex rounded-full bg-yellow-50 px-4 py-2 text-xs font-black text-yellow-700"
+              >
+                Add personal settings for better guidance →
+              </a>
+            )}
           </div>
 
           <form
