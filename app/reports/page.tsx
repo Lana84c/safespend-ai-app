@@ -447,128 +447,128 @@ export default function ReportsPage() {
   }, [upcomingBills]);
 
   const protectedSafeToSpend = totals.net - upcomingBillsTotal;
-
   const proInsights = useMemo(() => {
-    const biggestCategory = spendingByCategory[0] || null;
-    const biggestMerchant = topMerchants[0] || null;
+  const biggestCategory = spendingByCategory[0] || null;
+  const biggestMerchant = topMerchants[0] || null;
 
-    const overBudgetCategories = budgetPressure.filter(
-      (item) => item.status === "Over Budget"
+  const overBudgetCategories = budgetPressure.filter(
+    (item) => item.status === "Over Budget"
+  );
+
+  const closeBudgetCategories = budgetPressure.filter(
+    (item) => item.status === "Close"
+  );
+
+  const categoryConcentrationRisk =
+    biggestCategory && biggestCategory.percent >= 45;
+
+  const merchantConcentrationRisk =
+    biggestMerchant && biggestMerchant.percent >= 35;
+
+  const billPressureRisk =
+    upcomingBillsTotal > 0 &&
+    upcomingBillsTotal >= Math.max(totals.income * 0.25, 300);
+
+  const protectedSafeRisk =
+    protectedSafeToSpend <= 0
+      ? "Critical"
+      : protectedSafeToSpend < 100
+        ? "High"
+        : protectedSafeToSpend < 250
+          ? "Medium"
+          : "Low";
+
+  const insightLines: string[] = [];
+
+  if (biggestCategory) {
+    insightLines.push(
+      `${biggestCategory.category} is your largest spending category in this view at ${money(
+        biggestCategory.spent
+      )}, representing ${biggestCategory.percent}% of tracked spending.`
     );
+  }
 
-    const closeBudgetCategories = budgetPressure.filter(
-      (item) => item.status === "Close"
+  if (biggestMerchant) {
+    insightLines.push(
+      `${biggestMerchant.merchant} is your highest-spend merchant in this view at ${money(
+        biggestMerchant.spent
+      )}, representing ${biggestMerchant.percent}% of tracked spending.`
     );
+  }
 
-    const categoryConcentrationRisk =
-      biggestCategory && biggestCategory.percent >= 45;
+  if (overBudgetCategories.length > 0) {
+    insightLines.push(
+      `${overBudgetCategories.length} budget category ${
+        overBudgetCategories.length === 1 ? "is" : "are"
+      } over limit and should be treated as a spending freeze zone.`
+    );
+  } else if (closeBudgetCategories.length > 0) {
+    insightLines.push(
+      `${closeBudgetCategories.length} budget category ${
+        closeBudgetCategories.length === 1 ? "is" : "are"
+      } close to the limit. Reduce flexible purchases in those areas first.`
+    );
+  }
 
-    const merchantConcentrationRisk =
-      biggestMerchant && biggestMerchant.percent >= 35;
+  if (billPressureRisk) {
+    insightLines.push(
+      `Upcoming bills total ${money(
+        upcomingBillsTotal
+      )}, which creates meaningful pressure against your current safe-to-spend number.`
+    );
+  }
 
-    const billPressureRisk =
-      upcomingBillsTotal > 0 &&
-      upcomingBillsTotal >= Math.max(totals.income * 0.25, 300);
+  if (protectedSafeToSpend <= 0) {
+    insightLines.push(
+      "Your protected safe-to-spend is below zero. Non-essential spending should pause until bills or income are reconciled."
+    );
+  }
 
-    const protectedSafeRisk =
-      protectedSafeToSpend <= 0
-        ? "Critical"
-        : protectedSafeToSpend < 100
-          ? "High"
-          : protectedSafeToSpend < 250
-            ? "Medium"
-            : "Low";
+  if (insightLines.length === 0) {
+    insightLines.push(
+      "No major risk concentration detected in this view. Continue logging transactions, bills, and budgets for stronger insight quality."
+    );
+  }
 
-    const insightLines: string[] = [];
-
-    if (biggestCategory) {
-      insightLines.push(
-        `${biggestCategory.category} is your largest spending category in this view at ${money(
-          biggestCategory.spent
-        )}, representing ${biggestCategory.percent}% of tracked spending.`
-      );
-    }
-
-    if (biggestMerchant) {
-      insightLines.push(
-        `${biggestMerchant.merchant} is your highest-spend merchant in this view at ${money(
-          biggestMerchant.spent
-        )}, representing ${biggestMerchant.percent}% of tracked spending.`
-      );
-    }
-
-    if (overBudgetCategories.length > 0) {
-      insightLines.push(
-        `${overBudgetCategories.length} budget category ${
-          overBudgetCategories.length === 1 ? "is" : "are"
-        } over limit and should be treated as a spending freeze zone.`
-      );
-    } else if (closeBudgetCategories.length > 0) {
-      insightLines.push(
-        `${closeBudgetCategories.length} budget category ${
-          closeBudgetCategories.length === 1 ? "is" : "are"
-        } close to the limit. Reduce flexible purchases in those areas first.`
-      );
-    }
-
-    if (billPressureRisk) {
-      insightLines.push(
-        `Upcoming bills total ${money(
-          upcomingBillsTotal
-        )}, which creates meaningful pressure against your current safe-to-spend number.`
-      );
-    }
-
-    if (protectedSafeToSpend <= 0) {
-      insightLines.push(
-        "Your protected safe-to-spend is below zero. Non-essential spending should pause until bills or income are reconciled."
-      );
-    }
-
-    if (insightLines.length === 0) {
-      insightLines.push(
-        "No major risk concentration detected in this view. Continue logging transactions, bills, and budgets for stronger insight quality."
-      );
-    }
-
-    const recommendedFocus =
-      protectedSafeToSpend <= 0
-        ? "Pause non-essential spending and cover upcoming bills first."
-        : overBudgetCategories.length > 0
-          ? `Cut back first in ${overBudgetCategories
+  const recommendedFocus =
+    protectedSafeToSpend <= 0
+      ? "Pause non-essential spending and cover upcoming bills first."
+      : overBudgetCategories.length > 0
+        ? `Cut back first in ${overBudgetCategories
+            .slice(0, 2)
+            .map((item) => item.category)
+            .join(" and ")}.`
+        : closeBudgetCategories.length > 0
+          ? `Watch ${closeBudgetCategories
               .slice(0, 2)
               .map((item) => item.category)
-              .join(" and ")}.`
-          : closeBudgetCategories.length > 0
-            ? `Watch ${closeBudgetCategories
-                .slice(0, 2)
-                .map((item) => item.category)
-                .join(" and ")} for the rest of this period.`
-            : biggestCategory
-              ? `Review ${biggestCategory.category} spending before making another flexible purchase.`
-              : "Keep logging activity so SafeSpend can identify stronger patterns.";
+              .join(" and ")} for the rest of this period.`
+          : biggestCategory
+            ? `Review ${biggestCategory.category} spending before making another flexible purchase.`
+            : "Keep logging activity so SafeSpend can identify stronger patterns.";
 
-    return {
-      biggestCategory,
-      biggestMerchant,
-      overBudgetCategories,
-      closeBudgetCategories,
-      categoryConcentrationRisk,
-      merchantConcentrationRisk,
-      billPressureRisk,
-      protectedSafeRisk,
-      insightLines,
-      recommendedFocus,
-    };
-  }, [
-    spendingByCategory,
-    topMerchants,
-    budgetPressure,
-    upcomingBillsTotal,
-    totals.income,
-    protectedSafeToSpend,
-  ]);
+  return {
+    biggestCategory,
+    biggestMerchant,
+    overBudgetCategories,
+    closeBudgetCategories,
+    categoryConcentrationRisk,
+    merchantConcentrationRisk,
+    billPressureRisk,
+    protectedSafeRisk,
+    insightLines,
+    recommendedFocus,
+  };
+}, [
+  spendingByCategory,
+  topMerchants,
+  budgetPressure,
+  upcomingBillsTotal,
+  totals.income,
+  protectedSafeToSpend,
+]);
 
+  
   const reportSummary = useMemo(() => {
     if (reportLimitReached) {
       return "Your monthly Plus report limit has been reached. Upgrade to Pro for unlimited reports, advanced reports, deeper insights, and priority future features.";
@@ -737,6 +737,9 @@ export default function ReportsPage() {
         ) : (
           <>
             <section className="mb-6 grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
+	     {isProPlan && !reportLimitReached && (
+  <AdvancedProInsights insights={proInsights} />
+)}
               <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
                 <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
@@ -1473,6 +1476,8 @@ function ProInsightCard({
     </div>
   );
 }
+
+
 
 function LockedReportPreview() {
   return (
