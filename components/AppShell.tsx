@@ -1,10 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useState } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 
 type AppShellProps = {
   email?: string;
@@ -21,96 +19,55 @@ const navItems = [
   { label: "Coach", href: "/coach" },
   { label: "Reports", href: "/reports" },
   { label: "Exports", href: "/exports" },
-  { label: "Progress", href: "/progress" },
   { label: "Billing", href: "/billing" },
   { label: "Settings", href: "/settings" },
   { label: "Account", href: "/account" },
-  { label: "Help", href: "/help" },
-  { label: "Blog", href: "/blog" },
-];
-
-const legalLinks = [
-  { label: "Privacy Policy", href: "/privacy" },
-  { label: "Terms of Service", href: "/terms" },
-  { label: "Disclaimer", href: "/disclaimer" },
-  { label: "Data Deletion", href: "/data-deletion" },
 ];
 
 export default function AppShell({
-  email = "",
+  email,
   title,
   subtitle,
   children,
 }: AppShellProps) {
   const pathname = usePathname();
-  const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
-
-  async function handleLogout() {
-    setLoggingOut(true);
-    await supabase.auth.signOut();
-    router.push("/login");
-  }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f4f8fb] px-3 pb-8 pt-3 text-[#061b3d] sm:px-6 sm:pb-10 sm:pt-4 lg:px-8">
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col">
-        <header className="sticky top-3 z-50 mb-5 sm:top-4 sm:mb-7">
-          <div className="rounded-[1.5rem] border border-white/70 bg-white/92 p-3 shadow-xl backdrop-blur-xl sm:rounded-[2rem] sm:p-4">
-            <div className="flex items-center justify-between gap-3">
-              <Link
-                href="/dashboard"
-                className="flex min-w-0 items-center gap-3"
-              >
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] bg-white shadow-[0_14px_35px_rgba(0,183,199,0.28)] ring-1 ring-cyan-100 sm:h-20 sm:w-20 sm:rounded-[1.5rem] lg:h-24 lg:w-24 lg:rounded-[1.75rem]">
-                  <Image
-                    src="/safespend-logo.png"
-                    alt="SafeSpend AI logo"
-                    width={180}
-                    height={180}
-                    className="h-full w-full scale-150 object-contain"
-                    priority
-                  />
-                </div>
+    <main className="min-h-screen bg-gradient-to-br from-[#eefbff] via-white to-[#f7fbfd] px-4 py-5 text-[#102033] sm:px-6 lg:px-8">
+      <section className="mx-auto w-full max-w-7xl">
+        <header className="mb-6 rounded-[1.75rem] border border-slate-200 bg-white/90 p-4 shadow-lg backdrop-blur sm:p-5 lg:mb-8 lg:rounded-[2rem]">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-center gap-4">
+              <img
+                src="/safespend-logo.png"
+                alt="SafeSpend AI logo"
+                className="h-12 w-12 shrink-0 rounded-2xl object-cover shadow-lg sm:h-14 sm:w-14"
+              />
 
-                <div className="min-w-0">
-                  <p className="truncate text-lg font-black tracking-[-0.03em] text-[#061b3d] sm:text-xl">
-                    SafeSpend AI
-                  </p>
-                  <p className="truncate text-xs font-bold text-slate-500">
-                    Spending Coach
-                  </p>
-                </div>
-              </Link>
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-widest text-cyan-700">
+                  SafeSpend AI
+                </p>
 
-              <div className="hidden items-center gap-3 lg:flex">
-                {email && (
-                  <div className="max-w-[280px] truncate rounded-full bg-slate-50 px-4 py-2 text-sm font-bold text-slate-500">
-                    {email}
-                  </div>
+                <h1 className="mt-1 text-2xl font-black leading-tight tracking-[-0.04em] text-[#061b3d] sm:text-3xl lg:text-4xl">
+                  {title}
+                </h1>
+
+                {subtitle && (
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 sm:text-base">
+                    {subtitle}
+                  </p>
                 )}
 
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  disabled={loggingOut}
-                  className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-black text-[#061b3d] shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {loggingOut ? "Signing out..." : "Sign Out"}
-                </button>
+                {email && (
+                  <p className="mt-2 truncate text-xs font-bold text-slate-400 sm:text-sm">
+                    {email}
+                  </p>
+                )}
               </div>
-
-              <button
-                type="button"
-                onClick={() => setMenuOpen((current) => !current)}
-                className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-black text-[#061b3d] sm:px-5 sm:py-3 lg:hidden"
-              >
-                {menuOpen ? "Close" : "Menu"}
-              </button>
             </div>
 
-            <nav className="mt-4 hidden flex-wrap gap-2 border-t border-slate-100 pt-4 lg:flex">
+            <nav className="flex gap-2 overflow-x-auto pb-1 xl:max-w-[620px] xl:flex-wrap xl:justify-end xl:overflow-visible">
               {navItems.map((item) => {
                 const active =
                   pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -119,10 +76,10 @@ export default function AppShell({
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`rounded-full px-4 py-2.5 text-sm font-black transition ${
+                    className={`shrink-0 rounded-full px-4 py-2.5 text-sm font-black transition ${
                       active
                         ? "bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] text-white shadow-lg"
-                        : "bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-[#061b3d]"
+                        : "border border-slate-200 bg-white text-[#061b3d] hover:-translate-y-0.5 hover:shadow-md"
                     }`}
                   >
                     {item.label}
@@ -130,122 +87,11 @@ export default function AppShell({
                 );
               })}
             </nav>
-
-            {menuOpen && (
-              <div className="mt-4 border-t border-slate-100 pt-4 lg:hidden">
-                <nav className="grid gap-2 sm:grid-cols-2">
-                  {navItems.map((item) => {
-                    const active =
-                      pathname === item.href ||
-                      pathname.startsWith(`${item.href}/`);
-
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() => setMenuOpen(false)}
-                        className={`rounded-2xl px-4 py-3 text-center text-sm font-black ${
-                          active
-                            ? "bg-gradient-to-r from-[#0b4edb] via-[#00b7c7] to-[#5ce05c] text-white shadow-lg"
-                            : "bg-slate-50 text-[#061b3d]"
-                        }`}
-                      >
-                        {item.label}
-                      </Link>
-                    );
-                  })}
-                </nav>
-
-                <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  {email && (
-                    <p className="truncate rounded-full bg-slate-50 px-4 py-3 text-center text-sm font-bold text-slate-500">
-                      {email}
-                    </p>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    disabled={loggingOut}
-                    className="rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-black text-[#061b3d] shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {loggingOut ? "Signing out..." : "Sign Out"}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </header>
 
-        <section className="mb-5 overflow-hidden rounded-[1.5rem] border border-cyan-100 bg-gradient-to-br from-[#0637b8] via-[#0072b8] to-[#00a878] p-5 text-white shadow-xl sm:rounded-[2rem] md:mb-6 md:p-8">
-          <div className="relative">
-            <div className="absolute -right-10 -top-16 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-            <div className="absolute -bottom-20 left-1/3 h-44 w-44 rounded-full bg-[#5ce05c]/20 blur-3xl" />
-
-            <h1 className="relative max-w-5xl text-2xl font-black leading-tight tracking-[-0.04em] text-white sm:text-3xl md:text-5xl">
-              {title}
-            </h1>
-
-            {subtitle && (
-              <p className="relative mt-3 max-w-4xl text-sm leading-6 text-white/80 md:text-base">
-                {subtitle}
-              </p>
-            )}
-          </div>
-        </section>
-
-        <div className="flex-1">{children}</div>
-
-        <footer className="mt-10 rounded-[1.5rem] border border-slate-200 bg-white p-5 text-sm text-slate-500 shadow-lg sm:rounded-[2rem] sm:p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-cyan-100">
-                  <Image
-                    src="/safespend-logo.png"
-                    alt="SafeSpend AI logo"
-                    width={96}
-                    height={96}
-                    className="h-full w-full scale-150 object-contain"
-                  />
-                </div>
-
-                <div>
-                  <p className="font-black text-[#061b3d]">SafeSpend AI</p>
-                  <p className="text-xs font-bold text-slate-400">
-                    Spending Coach
-                  </p>
-                </div>
-              </div>
-
-              <p className="mt-4 max-w-3xl leading-6">
-                SafeSpend AI is a spending-awareness and budgeting support tool.
-                It is not financial, legal, tax, investment, credit, or
-                professional advice. Always use your own judgment before making
-                financial decisions.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-3 font-black text-[#061b3d] lg:justify-end">
-              {legalLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="rounded-full bg-slate-50 px-4 py-2 text-xs transition hover:bg-slate-100"
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-6 border-t border-slate-100 pt-4">
-            <p className="text-xs leading-5 text-slate-400">
-              © {new Date().getFullYear()} SafeSpend AI. All rights reserved.
-            </p>
-          </div>
-        </footer>
-      </div>
+        <div className="w-full">{children}</div>
+      </section>
     </main>
   );
 }
